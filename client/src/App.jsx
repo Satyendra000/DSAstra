@@ -1,12 +1,27 @@
-import { useEffect } from "react";
-import api from "./services/api";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import Home from "./pages/Home";
+import PrivateRoute from "./components/PrivateRoute";
+import "./index.css";
 
 function App() {
-  useEffect(() => {
-    api.get("/").then(res => console.log(res.data));
-  }, []);
+  return (
+    <Router>
+      <Routes>
+        <Route path="/login/*" element={<Login />} />
+        <Route path="/register/*" element={<Register />} />
+        
+        {/* Protected Routes */}
+        <Route element={<PrivateRoute />}>
+          <Route path="/" element={<Home />} />
+        </Route>
 
-  return <h1>AlgoPilot AI</h1>;
+        {/* Redirect unknown routes to home */}
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
+    </Router>
+  );
 }
 
 export default App;
