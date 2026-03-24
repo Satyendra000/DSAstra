@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Home from "./pages/Home";
+import Problems from "./pages/Problems";
 import PrivateRoute from "./components/PrivateRoute";
 import "./index.css";
 
@@ -15,6 +16,7 @@ function App() {
         {/* Protected Routes */}
         <Route element={<PrivateRoute />}>
           <Route path="/" element={<Home />} />
+          <Route path="/problems" element={<Problems />} />
         </Route>
 
         {/* Redirect unknown routes to home */}

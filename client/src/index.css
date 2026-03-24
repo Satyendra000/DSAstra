@@ -1,1 +1,69 @@
 @import "tailwindcss";
+
+@theme {
+  --color-primary: #3b82f6;
+  --color-primary-hover: #2563eb;
+  --color-background-light: #f6f6f8;
+  --color-background-dark: #09090b;
+  --color-surface-dark: #111113;
+  --color-surface-hover: #18181b;
+  --color-border-dark: #27272a;
+  --color-subtle-text: #71717a;
+
+  --font-display: "Inter", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--color-background-dark);
+  color: #fafafa;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.011em;
+}
+
+/* Scrollbar — nearly invisible */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.14); }
+
+/* Glass panel utility */
+.glass-panel {
+  background: rgba(17, 17, 19, 0.8);
+  backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Subtle glow for CTA */
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 24px rgba(59, 130, 246, 0.25), 0 0 0 1px rgba(59, 130, 246, 0.1); }
+  50% { box-shadow: 0 0 36px rgba(59, 130, 246, 0.35), 0 0 0 1px rgba(59, 130, 246, 0.15); }
+}
+
+.glow-cta {
+  animation: glow-pulse 3s ease-in-out infinite;
+}
+
+/* Fade in */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.4s ease-out both;
+}
+
+/* Selection */
+::selection {
+  background: rgba(59, 130, 246, 0.25);
+  color: white;
+}
+
+/* Focus ring */
+*:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.5);
+  outline-offset: 2px;
+}

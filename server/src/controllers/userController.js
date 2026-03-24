@@ -5,14 +5,7 @@ const User = require("../models/User");
 // @access  Private (Clerk)
 const syncUser = async (req, res) => {
   try {
-    const { id: clerkId, emailAddresses, firstName, lastName } = req.auth.claims || req.body; // Adapt based on actual claims structure or client passing data
-    // Note: req.auth contains minimal info. Typically client sends the full user object or we fetch from Clerk API.
-    // For simplicity, let's assume client sends { email, name } in body along with Clerk ID in token claims.
-    
-    // Actually better approach: Trust the token for ID, but get details from body or fetch from Clerk.
-    // Let's rely on body for now for simplicity, but use clerkId from auth to verify identity.
-    
-    const userId = req.auth.userId; // This is the Clerk ID
+    const userId = req.auth.userId;
     const { email, name } = req.body;
 
     let user = await User.findOne({ clerkId: userId });
@@ -26,11 +19,10 @@ const syncUser = async (req, res) => {
       return res.status(201).json(user);
     }
 
-    // Update if needed (optional)
     if (user.email !== email || user.name !== name) {
-        user.email = email;
-        user.name = name;
-        await user.save();
+      user.email = email;
+      user.name = name;
+      await user.save();
     }
 
     res.json(user);
@@ -57,4 +49,49 @@ const getUserProfile = async (req, res) => {
   }
 };
 
-module.exports = { syncUser, getUserProfile };
+// @desc    Toggle bookmark a problem
+// @route   POST /api/users/bookmarks/:problemId
+// @access  Private (Clerk)
+const toggleBookmark = async (req, res) => {
+  try {
+    const userId = req.auth.userId;
+    const { problemId } = req.params;
+
+    let user = await User.findOne({ clerkId: userId });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const isBookmarked = user.savedProblems.includes(problemId);
+
+    if (isBookmarked) {
+      user.savedProblems.pull(problemId);
+    } else {
+      user.savedProblems.addToSet(problemId);
+    }
+
+    await user.save();
+    res.json({ savedProblems: user.savedProblems, bookmarked: !isBookmarked });
+  } catch (error) {
+    console.error("Bookmark Error:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+};
+
+// @desc    Get all bookmarked problem IDs
+// @route   GET /api/users/bookmarks
+// @access  Private (Clerk)
+const getBookmarks = async (req, res) => {
+  try {
+    const user = await User.findOne({ clerkId: req.auth.userId }).select("savedProblems");
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    res.json({ savedProblems: user.savedProblems });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server Error" });
+  }
+};
+
+module.exports = { syncUser, getUserProfile, toggleBookmark, getBookmarks };

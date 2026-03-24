@@ -2,27 +2,26 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
 const userSchema = new mongoose.Schema({
+  clerkId: {
+    type: String,
+    unique: true,
+    sparse: true,
+  },
   username: {
     type: String,
-    required: true,
     unique: true,
+    sparse: true,
   },
   name: {
     type: String,
-    required: true,
   },
   email: {
     type: String,
-    required: true,
     unique: true,
-    match: [
-      /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/,
-      "Please add a valid email",
-    ],
+    sparse: true,
   },
   password: {
     type: String,
-    required: true,
   },
   targetRating: {
     type: Number,
@@ -57,6 +56,10 @@ const userSchema = new mongoose.Schema({
       },
     }
   ],
+  savedProblems: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Problem",
+  }],
 }, { timestamps: true });
 
 // Encrypt password using bcrypt
