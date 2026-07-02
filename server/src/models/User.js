@@ -60,12 +60,25 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "Problem",
   }],
+  platformHandles: {
+    codeforces: { type: String, default: "" },
+    leetcode:   { type: String, default: "" },
+    codechef:   { type: String, default: "" },
+  },
+  externalStats: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {},
+  },
+  contestsParticipated: {
+    type: Number,
+    default: 0,
+  },
 }, { timestamps: true });
 
 // Encrypt password using bcrypt
-userSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) {
-    next();
+userSchema.pre("save", async function () {
+  if (!this.isModified("password") || !this.password) {
+    return;
   }
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);

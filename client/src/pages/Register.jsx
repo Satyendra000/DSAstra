@@ -1,134 +1,155 @@
 import { SignUp } from "@clerk/clerk-react";
-import { Link } from "react-router-dom";
 import { dark } from "@clerk/themes";
 
 const Register = () => {
   return (
     <div className="flex min-h-screen w-full">
       {/* Left Side - Branding & Info */}
-      <div className="hidden lg:flex lg:w-1/2 flex-col justify-between p-12 pl-24 relative overflow-hidden bg-[#0B1120]">
-         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-[#1e293b]/20 to-transparent pointer-events-none" />
-         
-         <div className="relative z-10 max-w-lg">
-            {/* Logo */}
-            <div className="flex items-center gap-2 mb-12">
-                <div className="w-8 h-8 rounded bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">A</div>
-                <span className="text-xl font-bold text-white">DSAstra</span>
+      <div className="hidden lg:flex lg:w-1/2 flex-col justify-between p-12 pl-24 relative overflow-hidden bg-bg-deep">
+        {/* Ambient Gradient Orbs */}
+        <div className="ambient-orb w-[500px] h-[500px] bg-accent/8 top-[-10%] left-[-5%] animate-float" />
+        <div className="ambient-orb w-[300px] h-[300px] bg-accent-secondary/6 bottom-[10%] right-[-5%]" style={{ animationDelay: '4s' }} />
+        <div className="ambient-orb w-[200px] h-[200px] bg-accent/4 top-[50%] left-[30%]" style={{ animationDelay: '7s' }} />
+
+        {/* Grid pattern */}
+        <div
+          className="absolute inset-0 opacity-[0.02]"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)",
+            backgroundSize: "48px 48px",
+          }}
+        />
+
+        <div className="relative z-10 max-w-lg animate-fade-in-up">
+          {/* Logo */}
+          <div className="flex items-center gap-2.5 mb-14">
+            <div className="w-9 h-9 rounded-[10px] bg-gradient-to-br from-accent to-amber-600 flex items-center justify-center shadow-lg glow-accent">
+              <span className="material-symbols-outlined text-black text-[18px] font-bold">code</span>
             </div>
+            <span className="text-xl font-bold text-text-primary tracking-tight">DSAstra</span>
+          </div>
 
-            <h1 className="text-5xl font-bold text-white leading-tight mb-6">
-                Master Data<br />
-                Structures &<br />
-                Algorithms with AI.
-            </h1>
-            
-            <p className="text-lg text-gray-400 mb-12 max-w-md">
-                Join the next generation of developers using AI-driven insights to crack coding interviews and build better software.
-            </p>
+          {/* Heading */}
+          <h1 className="text-[48px] font-bold text-text-primary leading-[1.1] mb-6 tracking-[-0.03em]">
+            <span className="text-gradient-white">Master Data</span><br />
+            <span className="text-gradient-white">Structures &</span><br />
+            <span className="text-gradient-gold">Algorithms with AI.</span>
+          </h1>
 
-            <div className="space-y-6">
-                <div className="flex items-start gap-4">
-                    <div className="p-3 rounded-lg bg-blue-900/30 text-blue-400">
-                         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
-                    </div>
-                    <div>
-                        <h3 className="text-white font-semibold">Personalized Roadmaps</h3>
-                        <p className="text-sm text-gray-500">Curriculums adapted to your skill level.</p>
-                    </div>
-                </div>
+          <p className="text-lg text-text-secondary mb-14 max-w-md leading-relaxed">
+            Join the next generation of developers using AI-driven insights to crack coding interviews and build better software.
+          </p>
 
-                <div className="flex items-start gap-4">
-                     <div className="p-3 rounded-lg bg-purple-900/30 text-purple-400">
-                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                    </div>
-                    <div>
-                        <h3 className="text-white font-semibold">Real-time Battles</h3>
-                        <p className="text-sm text-gray-500">Challenge peers in live coding duels.</p>
-                    </div>
+          {/* Features */}
+          <div className="space-y-5">
+            {[
+              {
+                icon: "auto_stories",
+                title: "Personalized Roadmaps",
+                desc: "Curriculums adapted to your skill level.",
+                color: "text-blue",
+                bg: "bg-blue/10 border-blue/15",
+              },
+              {
+                icon: "bolt",
+                title: "Real-time Battles",
+                desc: "Challenge peers in live coding duels.",
+                color: "text-accent-secondary",
+                bg: "bg-accent-secondary/10 border-accent-secondary/15",
+              },
+              {
+                icon: "smart_toy",
+                title: "AI Code Assistant",
+                desc: "Instant feedback on complexity and bugs.",
+                color: "text-emerald",
+                bg: "bg-emerald/10 border-emerald/15",
+              },
+            ].map((feature, i) => (
+              <div
+                key={feature.title}
+                className={`flex items-start gap-4 animate-fade-in-up stagger-${i + 2}`}
+              >
+                <div className={`p-2.5 rounded-xl border ${feature.bg} shrink-0`}>
+                  <span className={`material-symbols-outlined text-[22px] ${feature.color}`}>{feature.icon}</span>
                 </div>
-                
-                {/* AI Code Assistant Feature from screenshot */}
-                <div className="flex items-start gap-4">
-                     <div className="p-3 rounded-lg bg-indigo-900/30 text-indigo-400">
-                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-                    </div>
-                    <div>
-                        <h3 className="text-white font-semibold">AI Code Assistant</h3>
-                        <p className="text-sm text-gray-500">Instant feedback on complexity and bugs.</p>
-                    </div>
+                <div>
+                  <h3 className="text-text-primary font-semibold text-[15px]">{feature.title}</h3>
+                  <p className="text-[13px] text-text-secondary mt-0.5">{feature.desc}</p>
                 </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Social proof */}
+        <div className="relative z-10 flex items-center gap-4 mt-12 max-w-lg animate-fade-in-up stagger-5">
+          <div className="flex -space-x-3">
+            {[
+              "bg-gradient-to-br from-blue/60 to-blue/30",
+              "bg-gradient-to-br from-accent-secondary/60 to-accent-secondary/30",
+              "bg-gradient-to-br from-emerald/60 to-emerald/30",
+            ].map((bg, i) => (
+              <div key={i} className={`w-10 h-10 rounded-full border-2 border-bg-deep ${bg}`} />
+            ))}
+            <div className="w-10 h-10 rounded-full border-2 border-bg-deep bg-gradient-to-br from-accent to-amber-600 flex items-center justify-center text-[10px] text-black font-bold">
+              +2k
             </div>
-         </div>
-
-         <div className="relative z-10 flex items-center gap-4 mt-12 max-w-lg">
-             <div className="flex -space-x-3">
-                 {[1,2,3].map(i => (
-                     <div key={i} className="w-10 h-10 rounded-full border-2 border-[#0a0c10] bg-gray-600" />
-                 ))}
-                 <div className="w-10 h-10 rounded-full border-2 border-[#0a0c10] bg-blue-600 flex items-center justify-center text-xs text-white font-bold">+2k</div>
-             </div>
-             <p className="text-sm text-gray-400">Joined by 2,000+ developers this week</p>
-         </div>
+          </div>
+          <p className="text-[13px] text-text-secondary">Joined by <span className="text-text-primary font-medium">2,000+</span> developers this week</p>
+        </div>
       </div>
 
       {/* Right Side - Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 bg-[#0B0F1A] relative">
-         {/* Background glow for right side */}
-         <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-900/10 rounded-full blur-[100px]" />
-         
-         <div className="w-full max-w-md z-10 relative">
-            <div className="absolute top-0 right-0">
-                {/* Close button placeholder */}
-                <button className="text-gray-500 hover:text-white">
-                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
-            </div>
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 bg-bg-base relative">
+        {/* Subtle orb */}
+        <div className="ambient-orb w-[350px] h-[350px] bg-accent-secondary/5 top-[-10%] right-[-5%]" />
 
-            <SignUp 
-              routing="path" 
-              path="/register"
-              signInUrl="/login"
-              fallbackRedirectUrl="/"
-              appearance={{
-                baseTheme: dark,
-                variables: {
-                  colorPrimary: '#4f46e5', // indigo-600
-                  colorBackground: 'transparent',
-                  colorInputBackground: '#161b22', 
-                  colorInputText: '#ffffff',
-                  colorText: '#ffffff',
-                  colorTextSecondary: '#9ca3af',
-                  fontFamily: 'inherit',
-                  borderRadius: '0.5rem',
-                },
-                elements: {
-                  card: "bg-transparent shadow-none p-0 w-full",
-                  headerTitle: "text-3xl font-bold text-white mb-2",
-                  headerSubtitle: "text-gray-400 mb-8",
-                  socialButtonsBlockButton: "border border-gray-700 hover:bg-gray-700 bg-[#1f2937] text-white transition-colors",
-                  socialButtonsBlockButtonText: "font-normal hidden md:block",
-                  formButtonPrimary: "font-semibold py-3 transition-colors text-white",
-                  formFieldInput: "w-full border border-gray-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none",
-                  formFieldLabel: "text-gray-300 font-medium",
-                  dividerLine: "bg-gray-700",
-                  dividerText: "text-gray-500 px-2 bg-[#0B0F1A]",
-                  footerActionText: "text-gray-400",
-                  footerActionLink: "text-indigo-400 hover:text-indigo-300 font-medium",
-                  formFieldAction: "text-indigo-400 hover:text-indigo-300",
-                  formFieldErrorText: "text-red-500 text-sm mt-1",
-                  alert: "bg-red-500/10 border border-red-500 text-red-500 p-3 rounded mb-4",
-                  alertText: "text-red-500 text-sm",
-                  logoBox: "hidden", // Hide clerk logo, using our own structure
-                  footer: "mt-8 text-center text-sm text-gray-400",
-                },
-                layout: {
-                  socialButtonsPlacement: "top",
-                  socialButtonsVariant: "blockButton",
-                }
-              }}
-            />
-
-         </div>
+        <div className="w-full max-w-md z-10 relative animate-scale-in">
+          <SignUp
+            routing="path"
+            path="/register"
+            signInUrl="/login"
+            fallbackRedirectUrl="/"
+            appearance={{
+              baseTheme: dark,
+              variables: {
+                colorPrimary: '#e2b340',
+                colorBackground: 'transparent',
+                colorInputBackground: '#111116',
+                colorInputText: '#ededef',
+                colorText: '#ededef',
+                colorTextSecondary: '#8a8f98',
+                fontFamily: '"Inter", system-ui, sans-serif',
+                borderRadius: '0.75rem',
+              },
+              elements: {
+                card: "bg-transparent shadow-none p-0 w-full",
+                headerTitle: "text-3xl font-bold text-text-primary mb-2 tracking-tight",
+                headerSubtitle: "text-text-secondary mb-8",
+                socialButtonsBlockButton: "border border-white/[0.08] hover:bg-white/[0.05] bg-white/[0.02] text-text-primary transition-all duration-200 rounded-xl",
+                socialButtonsBlockButtonText: "font-normal hidden md:block",
+                formButtonPrimary: "font-semibold py-3 transition-all duration-200 text-black rounded-xl bg-accent hover:bg-accent-hover",
+                formFieldInput: "w-full border border-white/[0.08] focus:border-accent/50 focus:ring-1 focus:ring-accent/30 outline-none rounded-xl bg-bg-deep/50 transition-all duration-200",
+                formFieldLabel: "text-text-secondary font-medium text-[13px]",
+                dividerLine: "bg-white/[0.06]",
+                dividerText: "text-text-tertiary px-2 bg-bg-base",
+                footerActionText: "text-text-secondary",
+                footerActionLink: "text-accent hover:text-accent-hover font-medium transition-colors",
+                formFieldAction: "text-accent-secondary hover:text-violet-400 transition-colors",
+                formFieldErrorText: "text-rose text-sm mt-1",
+                alert: "bg-rose/10 border border-rose/20 text-rose p-3 rounded-xl mb-4",
+                alertText: "text-rose text-sm",
+                logoBox: "hidden",
+                footer: "mt-8 text-center text-sm text-text-secondary",
+              },
+              layout: {
+                socialButtonsPlacement: "top",
+                socialButtonsVariant: "blockButton",
+              }
+            }}
+          />
+        </div>
       </div>
     </div>
   );

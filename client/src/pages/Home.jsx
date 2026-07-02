@@ -1,39 +1,39 @@
-import { useMemo } from "react";
-import { useUser, useClerk } from "@clerk/clerk-react";
-import { Link } from "react-router-dom";
+import { useMemo, useState, useEffect, useCallback } from "react";
+import { useUser, useClerk, useAuth } from "@clerk/clerk-react";
+import { Link, useNavigate } from "react-router-dom";
+import api from "../services/api";
 
-/* ── Heatmap ── */
-const Heatmap = () => {
+/* ─────────────────────────────────────────────────────── Heatmap ── */
+const Heatmap = ({ heatmapData = {} }) => {
   const cells = useMemo(() => {
     const data = [];
     const today = new Date();
     for (let i = 364; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(d.getDate() - i);
-      const rand = Math.random();
+      const dateKey = d.toISOString().split("T")[0];
+      const count = heatmapData[dateKey] || 0;
       let level = 0;
-      if (rand > 0.82) level = 4;
-      else if (rand > 0.68) level = 3;
-      else if (rand > 0.52) level = 2;
-      else if (rand > 0.35) level = 1;
-      data.push({ date: d, level });
+      if (count >= 10) level = 4;
+      else if (count >= 6) level = 3;
+      else if (count >= 3) level = 2;
+      else if (count >= 1) level = 1;
+      data.push({ date: d, level, count, dateKey });
     }
     return data;
-  }, []);
+  }, [heatmapData]);
 
   const levels = [
-    "bg-[#161b22]",
-    "bg-emerald-900/60",
-    "bg-emerald-700/70",
-    "bg-emerald-500/80",
-    "bg-emerald-400",
+    "bg-white/[0.03]",
+    "bg-emerald/20",
+    "bg-emerald/40",
+    "bg-emerald/60",
+    "bg-emerald/80",
   ];
 
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const weeks = [];
-  for (let i = 0; i < cells.length; i += 7) {
-    weeks.push(cells.slice(i, i + 7));
-  }
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
   return (
     <div className="space-y-2.5">
@@ -43,20 +43,24 @@ const Heatmap = () => {
           const showLabel = firstDay && firstDay.getDate() <= 7;
           return (
             <div key={wi} className="w-[12px] shrink-0">
-              {showLabel && <span className="text-[9px] text-zinc-500 font-medium">{months[firstDay.getMonth()]}</span>}
+              {showLabel && (
+                <span className="text-[9px] text-text-tertiary font-medium">
+                  {months[firstDay.getMonth()]}
+                </span>
+              )}
             </div>
           );
         })}
       </div>
       <div className="flex gap-[3px]">
-        <div className="flex flex-col gap-[3px] text-[9px] text-zinc-600 w-7 shrink-0">
-          <span className="h-[12px]"></span>
+        <div className="flex flex-col gap-[3px] text-[9px] text-text-muted w-7 shrink-0">
+          <span className="h-[12px]" />
           <span className="h-[12px] flex items-center">Mon</span>
-          <span className="h-[12px]"></span>
+          <span className="h-[12px]" />
           <span className="h-[12px] flex items-center">Wed</span>
-          <span className="h-[12px]"></span>
+          <span className="h-[12px]" />
           <span className="h-[12px] flex items-center">Fri</span>
-          <span className="h-[12px]"></span>
+          <span className="h-[12px]" />
         </div>
         <div className="flex gap-[3px] overflow-x-auto pb-1">
           {weeks.map((week, wi) => (
@@ -64,8 +68,8 @@ const Heatmap = () => {
               {week.map((cell, ci) => (
                 <div
                   key={ci}
-                  className={`w-[12px] h-[12px] rounded-[3px] ${levels[cell.level]} hover:ring-1 hover:ring-zinc-500 transition-all cursor-crosshair`}
-                  title={`${cell.date.toLocaleDateString()} — ${cell.level} contributions`}
+                  className={`w-[12px] h-[12px] rounded-[3px] ${levels[cell.level]} hover:ring-1 hover:ring-accent/40 transition-all duration-150 cursor-crosshair`}
+                  title={`${cell.dateKey} — ${cell.count} submission${cell.count !== 1 ? "s" : ""}`}
                 />
               ))}
             </div>
@@ -73,18 +77,23 @@ const Heatmap = () => {
         </div>
       </div>
       <div className="flex items-center justify-end gap-1.5 pt-0.5">
-        <span className="text-[9px] text-zinc-600">Less</span>
+        <span className="text-[9px] text-text-muted">Less</span>
         {levels.map((l, i) => (
           <div key={i} className={`w-[10px] h-[10px] rounded-[2px] ${l}`} />
         ))}
-        <span className="text-[9px] text-zinc-600">More</span>
+        <span className="text-[9px] text-text-muted">More</span>
       </div>
     </div>
   );
 };
 
-/* ── Mini Sparkline SVG ── */
-const Sparkline = ({ data, color = "#3b82f6", width = 64, height = 28 }) => {
+/* ─────────────────────────────────────── Mini Sparkline SVG ── */
+const Sparkline = ({ data, color = "#e2b340", width = 64, height = 28 }) => {
+  if (!data || data.length < 2) {
+    return <div style={{ width, height }} className="opacity-30 flex items-end">
+      <div className="w-full h-px" style={{ background: color }} />
+    </div>;
+  }
   const max = Math.max(...data);
   const min = Math.min(...data);
   const range = max - min || 1;
@@ -93,41 +102,36 @@ const Sparkline = ({ data, color = "#3b82f6", width = 64, height = 28 }) => {
     const y = height - 2 - ((v - min) / range) * (height - 4);
     return `${x},${y}`;
   });
-
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="opacity-60 group-hover:opacity-100 transition-opacity">
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="opacity-50 group-hover:opacity-90 transition-opacity duration-300">
       <defs>
-        <linearGradient id={`grad-${color.replace('#','')}`} x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={`grad-${color.replace("#", "")}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.3" />
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>
       <polyline fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" points={pts.join(" ")} />
-      <polygon fill={`url(#grad-${color.replace('#','')})`} points={`0,${height} ${pts.join(" ")} ${width},${height}`} />
+      <polygon fill={`url(#grad-${color.replace("#", "")})`} points={`0,${height} ${pts.join(" ")} ${width},${height}`} />
     </svg>
   );
 };
 
-/* ── Circular Progress Ring ── */
-const ProgressRing = ({ value, max, size = 48, strokeWidth = 3.5, color = "#3b82f6" }) => {
+/* ─────────────────────────────────── Circular Progress Ring ── */
+const ProgressRing = ({ value, max, size = 48, strokeWidth = 3.5, color = "#e2b340" }) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const progress = (value / max) * circumference;
-
   return (
     <svg width={size} height={size} className="transform -rotate-90">
-      <circle cx={size/2} cy={size/2} r={radius} stroke="#27272a" strokeWidth={strokeWidth} fill="none" />
-      <circle
-        cx={size/2} cy={size/2} r={radius}
-        stroke={color} strokeWidth={strokeWidth} fill="none"
+      <circle cx={size/2} cy={size/2} r={radius} stroke="rgba(255,255,255,0.05)" strokeWidth={strokeWidth} fill="none" />
+      <circle cx={size/2} cy={size/2} r={radius} stroke={color} strokeWidth={strokeWidth} fill="none"
         strokeDasharray={circumference} strokeDashoffset={circumference - progress}
-        strokeLinecap="round" className="transition-all duration-700"
-      />
+        strokeLinecap="round" className="transition-all duration-700" style={{ filter: `drop-shadow(0 0 4px ${color}40)` }} />
     </svg>
   );
 };
 
-/* ── Platform SVG Icons ── */
+/* ─────────────────────────────────────── Platform SVG Icons ── */
 const PlatformIcon = ({ platform, size = 16, className = "" }) => {
   switch (platform) {
     case "Codeforces":
@@ -153,161 +157,436 @@ const PlatformIcon = ({ platform, size = 16, className = "" }) => {
   }
 };
 
-/* ── Main ── */
+/* ─────────────────────────────── Platform rank helpers ── */
+const getRankForPlatform = (platform, rating) => {
+  if (!rating || rating === 0) return "Unrated";
+  if (platform === "Codeforces") {
+    if (rating >= 2400) return "Grandmaster";
+    if (rating >= 2100) return "Master";
+    if (rating >= 1900) return "Candidate Master";
+    if (rating >= 1600) return "Expert";
+    if (rating >= 1400) return "Specialist";
+    if (rating >= 1200) return "Pupil";
+    return "Newbie";
+  }
+  if (platform === "LeetCode") {
+    if (rating >= 2400) return "Guardian";
+    if (rating >= 2000) return "Knight";
+    if (rating >= 1600) return "Competitor";
+    return "Participant";
+  }
+  if (platform === "CodeChef") {
+    if (rating >= 2500) return "7★";
+    if (rating >= 2200) return "6★";
+    if (rating >= 2000) return "5★";
+    if (rating >= 1800) return "4★";
+    if (rating >= 1600) return "3★";
+    if (rating >= 1400) return "2★";
+    return "1★";
+  }
+  return "Unrated";
+};
+
+const getPlatformColor = (platform) => {
+  switch (platform) {
+    case "Codeforces": return "#60a5fa";
+    case "LeetCode":   return "#fbbf24";
+    case "CodeChef":   return "#fb923c";
+    default:           return "#8a8f98";
+  }
+};
+
+/* ─────────────────── Countdown formatter ── */
+const formatCountdown = (startTimeISO) => {
+  const diff = new Date(startTimeISO) - Date.now();
+  if (diff <= 0) return "Live now";
+  const d = Math.floor(diff / 86400000);
+  const h = Math.floor((diff % 86400000) / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+};
+
+const formatContestTime = (startTimeISO) => {
+  const d = new Date(startTimeISO);
+  return d.toLocaleString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  });
+};
+
+/* ═══════════════════════════════════════════════════ Main Component ══ */
 const Home = () => {
   const { user } = useUser();
   const { signOut } = useClerk();
-  const userName = user?.firstName || user?.username || "User";
-  const userAvatar = user?.imageUrl;
+  const { getToken } = useAuth();
+  const navigate = useNavigate();
+  const userName    = user?.firstName || user?.username || "Guest";
+  const userAvatar  = user?.imageUrl;
+
+  /* ── Stats state ── */
+  const [stats, setStats] = useState({
+    solvedCount: 0, streak: 0, heatmapData: {},
+    platformRatings: [], targetRating: 1500,
+    activeDays: 0, avgPerDay: 0, contestsParticipated: 0,
+    platformHandles: { codeforces: "", leetcode: "", codechef: "" },
+  });
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  /* ── Contest state ── */
+  const [contests, setContests] = useState([]);
+  const [contestsLoading, setContestsLoading] = useState(true);
+
+  /* ── Prep card counts ── */
+  const [prepCounts, setPrepCounts] = useState({ LeetCode: 0, Codeforces: 0, CodeChef: 0 });
+
+  /* ── Sync button ── */
+  const [syncing, setSyncing] = useState(false);
+
+  /* ── Fetch stats ── */
+  const fetchStats = useCallback(async () => {
+    try {
+      const token = await getToken();
+      if (!token) { setStatsLoading(false); return; }
+      const res = await api.get("/api/users/stats", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setStats(res.data);
+
+      // Removed modal trigger
+    } catch (err) {
+      console.log("Stats not loaded:", err);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, [getToken]);
+
+  /* ── Fetch contests ── */
+  const fetchContests = useCallback(async () => {
+    try {
+      const res = await api.get("/api/contests/upcoming");
+      const fetched = res.data.contests || [];
+      // Only show CodeChef starter contests, keep all other platforms
+      const filtered = fetched.filter(c => 
+        c.platformKey !== "CC" || c.title.toLowerCase().includes("starter")
+      );
+      setContests(filtered);
+    } catch (err) {
+      console.log("Contests not loaded:", err);
+    } finally {
+      setContestsLoading(false);
+    }
+  }, []);
+
+  /* ── Fetch problem counts per platform ── */
+  const fetchPrepCounts = useCallback(async () => {
+    try {
+      const [lcRes, cfRes, ccRes] = await Promise.all([
+        api.get("/api/problems?platform=LeetCode&limit=1"),
+        api.get("/api/problems?platform=Codeforces&limit=1"),
+        api.get("/api/problems?platform=CodeChef&limit=1"),
+      ]);
+      setPrepCounts({
+        LeetCode:   lcRes.data.total || 0,
+        Codeforces: cfRes.data.total || 0,
+        CodeChef:   ccRes.data.total || 0,
+      });
+    } catch (err) {
+      console.log("Prep counts not loaded:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchStats();
+    fetchContests();
+    fetchPrepCounts();
+  }, [fetchStats, fetchContests, fetchPrepCounts]);
+
+  /* ── Sync handler ── */
+  const handleSync = async () => {
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+    try {
+      setSyncing(true);
+      const token = await getToken();
+      await api.post("/api/users/sync",
+        { email: user?.primaryEmailAddress?.emailAddress, name: user?.fullName },
+        { 
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 30000 
+        }
+      );
+      await fetchStats();
+    } catch (err) {
+      console.error("Sync failed:", err);
+      alert(err.code === "ECONNABORTED" ? "Sync timed out" : "Sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
-  const platforms = [
-    { name: "Codeforces", rating: 1547, maxRating: 1623, rank: "Specialist", handle: "satyendra_cf", delta: +24, color: "#3b82f6", sparkline: [1420,1390,1480,1510,1470,1530,1547] },
-    { name: "LeetCode", rating: 1892, maxRating: 1920, rank: "Knight", handle: "satyendra_lc", delta: +15, color: "#f59e0b", sparkline: [1750,1780,1810,1830,1860,1875,1892] },
-    { name: "CodeChef", rating: 1756, maxRating: 1812, rank: "4★", handle: "satyendra_cc", delta: -8, color: "#f97316", sparkline: [1800,1790,1810,1780,1770,1760,1756] },
-  ];
+  /* ── Platform cards data ── */
+  const handles = stats.platformHandles || {};
+  const platforms = stats.platformRatings && stats.platformRatings.length > 0
+    ? stats.platformRatings.map((p) => ({
+        name:      p.name,
+        rating:    p.rating || 0,
+        maxRating: p.maxRating || 0,
+        rank:      getRankForPlatform(p.name, p.rating),
+        handle:    handles[p.name.toLowerCase()] || handles[p.name === "Codeforces" ? "codeforces" : p.name === "LeetCode" ? "leetcode" : "codechef"] || "",
+        delta:     p.sparkline?.length >= 2 ? p.rating - p.sparkline[p.sparkline.length - 2] : 0,
+        color:     getPlatformColor(p.name),
+        sparkline: p.sparkline?.length >= 2 ? p.sparkline : [p.rating || 0],
+      }))
+    : [
+        { name: "Codeforces", rating: 0, maxRating: 0, rank: "Unrated", handle: handles.codeforces || "", delta: 0, color: "#60a5fa", sparkline: [0] },
+        { name: "LeetCode",   rating: 0, maxRating: 0, rank: "Unrated", handle: handles.leetcode  || "", delta: 0, color: "#fbbf24", sparkline: [0] },
+        { name: "CodeChef",   rating: 0, maxRating: 0, rank: "Unrated", handle: handles.codechef  || "", delta: 0, color: "#fb923c", sparkline: [0] },
+      ];
 
-  const contests = [
-    { platform: "CF", title: "Codeforces Round #950 (Div 2)", time: "Tomorrow, 14:00 UTC", countdown: "02:45:10", pred: "+15", color: "#3b82f6" },
-    { platform: "LC", title: "LeetCode Weekly Contest 402", time: "Sunday, 02:30 UTC", countdown: "2d 10h", pred: "+8", color: "#f59e0b" },
-    { platform: "CC", title: "CodeChef Starters 140", time: "Wednesday, 14:30 UTC", countdown: "4d 6h", pred: "+12", color: "#f97316" },
-    { platform: "LC", title: "LeetCode Biweekly Contest 131", time: "Saturday, 14:30 UTC", countdown: "5d 15h", pred: "+5", color: "#f59e0b" },
-  ];
+  /* ── Real streak week bars (last 7 days) ── */
+  const streakWeekBars = useMemo(() => {
+    const days = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+    const result = [];
+    const today = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const key  = d.toISOString().split("T")[0];
+      const day  = days[d.getDay()];
+      const active = !!(stats.heatmapData[key] && stats.heatmapData[key] > 0);
+      result.push({ day, active, isToday: i === 0 });
+    }
+    return result;
+  }, [stats.heatmapData]);
 
+  /* ── Prep cards ── */
   const prepCards = [
-    { title: "Codeforces Div 2", desc: "Master 1200–1600 rated problems. Greedy, math, and constructive algorithms.", platform: "Codeforces", color: "#3b82f6", problems: 842 },
-    { title: "LeetCode Weekly", desc: "Recent weekly contest problems. Arrays, trees, and dynamic programming.", platform: "LeetCode", color: "#f59e0b", problems: 624 },
-    { title: "CodeChef Starters", desc: "Starters-level problems. Speed up implementation and number theory.", platform: "CodeChef", color: "#f97316", problems: 518 },
+    { title: "Codeforces Div 2",  desc: "Master 1200–1600 rated problems. Greedy, math, and constructive algorithms.", platform: "Codeforces", color: "#60a5fa", problems: prepCounts.Codeforces },
+    { title: "LeetCode Weekly",   desc: "Recent weekly contest problems. Arrays, trees, and dynamic programming.",      platform: "LeetCode",   color: "#fbbf24", problems: prepCounts.LeetCode },
+    { title: "CodeChef Starters", desc: "Starters-level problems. Speed up implementation and number theory.",          platform: "CodeChef",   color: "#fb923c", problems: prepCounts.CodeChef },
+  ];
+
+  /* ── Nav items ── */
+  const navItems = [
+    { to: "/problems", icon: "code",         label: "Problems",  active: false },
+    { to: "#",         icon: "emoji_events", label: "Contests",  active: false, comingSoon: true },
+    { to: "#",         icon: "target",       label: "Practice",  active: false, comingSoon: true },
+    { to: "#",         icon: "bar_chart",    label: "Analytics", active: false, comingSoon: true },
   ];
 
   return (
-    <div className="bg-background-dark text-white min-h-screen flex overflow-hidden selection:bg-blue-500/25">
+    <div className="bg-bg-deep text-text-primary min-h-screen flex overflow-hidden selection:bg-accent/20">
+
       {/* ─── Sidebar ─── */}
-      <aside className="w-[260px] border-r border-border-dark/70 hidden md:flex flex-col bg-background-dark shrink-0">
-        <div className="h-14 flex items-center px-5 gap-3 border-b border-border-dark/50">
-          <div className="size-7 rounded-md bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center">
-            <span className="material-symbols-outlined text-white text-[16px]">code</span>
+      <aside className="w-[260px] border-r border-border hidden md:flex flex-col bg-bg-deep shrink-0 relative">
+        {/* Subtle ambient glow in sidebar */}
+        <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-accent/[0.03] to-transparent pointer-events-none" />
+
+        <div className="h-14 flex items-center px-5 gap-3 border-b border-border relative z-10">
+          <div className="size-7 rounded-[8px] bg-gradient-to-br from-accent to-amber-600 flex items-center justify-center shadow-sm" style={{ boxShadow: '0 0 12px rgba(226,179,64,0.15)' }}>
+            <span className="material-symbols-outlined text-black text-[16px]">code</span>
           </div>
           <div className="flex flex-col leading-none">
-            <span className="font-semibold text-[15px] tracking-tight text-white">DSAstra</span>
-            <span className="text-[10px] text-subtle-text uppercase tracking-[0.16em] mt-0.5">Kinetic Monolith</span>
+            <span className="font-semibold text-[15px] tracking-tight text-text-primary">DSAstra</span>
           </div>
         </div>
-        <nav className="flex-1 overflow-y-auto py-4 px-3 flex flex-col gap-0.5">
-          <Link to="/" className="flex items-center gap-2.5 px-3 py-[7px] rounded-md bg-white/[0.06] text-white font-medium text-[13px]">
-            <span className="material-symbols-outlined text-[18px]">dashboard</span>Dashboard
+
+        <nav className="flex-1 overflow-y-auto py-4 px-3 flex flex-col gap-0.5 relative z-10">
+          <Link to="/"
+            className="nav-active flex items-center gap-2.5 px-3 py-[7px] rounded-lg bg-accent/[0.08] text-accent font-medium text-[13px] border border-accent/10 transition-all duration-200">
+            <span className="material-symbols-outlined text-[18px]">dashboard</span>
+            Dashboard
           </Link>
-          {[
-            { to: "/problems", icon: "code", label: "Problems" },
-            { to: "#", icon: "emoji_events", label: "Contests" },
-            { to: "#", icon: "target", label: "Practice" },
-            { to: "#", icon: "bar_chart", label: "Analytics" },
-          ].map((item) => (
-            <Link key={item.label} to={item.to} className="flex items-center gap-2.5 px-3 py-[7px] rounded-md text-subtle-text hover:text-white hover:bg-white/[0.04] transition-colors text-[13px] font-medium">
-              <span className="material-symbols-outlined text-[18px]">{item.icon}</span>{item.label}
-            </Link>
+          {navItems.map((item) => (
+            <div key={item.label} className="relative group/nav">
+              <Link
+                to={item.to}
+                onClick={item.comingSoon ? (e) => e.preventDefault() : undefined}
+                className={`flex items-center gap-2.5 px-3 py-[7px] rounded-lg text-text-secondary hover:text-text-primary hover:bg-white/[0.03] transition-all duration-200 text-[13px] font-medium ${item.comingSoon ? "cursor-not-allowed opacity-50" : ""}`}
+              >
+                <span className="material-symbols-outlined text-[18px]">{item.icon}</span>
+                {item.label}
+                {item.comingSoon && (
+                  <span className="ml-auto text-[9px] bg-accent-secondary/10 text-accent-secondary border border-accent-secondary/15 px-1.5 py-[2px] rounded-md font-semibold uppercase tracking-wider">
+                    Soon
+                  </span>
+                )}
+              </Link>
+            </div>
           ))}
         </nav>
-        <div className="px-3 pb-2">
-          <div className="flex items-center gap-2.5 px-3 py-[7px] text-subtle-text text-[13px] font-medium">
-            <span className="material-symbols-outlined text-[18px]">monitor_heart</span>System Status
+
+        <div className="px-3 pb-2 relative z-10" />
+
+        {user ? (
+          <div className="px-3 py-3 border-t border-border relative z-10 flex items-center justify-between group">
+            <Link to="/settings" className="flex items-center gap-2.5 flex-1 px-2 py-1.5 rounded-lg hover:bg-white/[0.03] transition-all duration-200">
+              <div className="size-7 rounded-full bg-bg-hover overflow-hidden border border-border shrink-0">
+                {userAvatar && <img alt="" className="w-full h-full object-cover" src={userAvatar} />}
+              </div>
+              <div className="flex flex-col flex-1 overflow-hidden leading-none">
+                <span className="text-[13px] font-medium text-text-primary truncate">{userName}</span>
+                <span className="text-[11px] text-text-tertiary truncate mt-0.5">
+                  {handles.codeforces || handles.leetcode || handles.codechef
+                    ? "Handles connected"
+                    : "Connect platforms"}
+                </span>
+              </div>
+            </Link>
+            <button onClick={() => signOut()} className="material-symbols-outlined text-text-tertiary hover:text-rose text-[18px] opacity-0 group-hover:opacity-100 transition-all duration-200 p-1 rounded-md hover:bg-white/5 mr-1" title="Sign Out">
+              logout
+            </button>
           </div>
-        </div>
-        <div className="px-3 py-3 border-t border-border-dark/50">
-          <button onClick={() => signOut()} className="flex items-center gap-2.5 w-full px-2 py-1.5 rounded-md hover:bg-white/[0.04] transition-colors text-left group">
-            <div className="size-7 rounded-full bg-zinc-800 overflow-hidden border border-border-dark shrink-0">
-              {userAvatar && <img alt="" className="w-full h-full object-cover" src={userAvatar} />}
-            </div>
-            <div className="flex flex-col flex-1 overflow-hidden leading-none">
-              <span className="text-[13px] font-medium text-white truncate">{userName}</span>
-              <span className="text-[11px] text-subtle-text truncate mt-0.5">Pro Plan</span>
-            </div>
-            <span className="material-symbols-outlined text-subtle-text group-hover:text-red-400 text-[16px] opacity-0 group-hover:opacity-100 transition-all">logout</span>
-          </button>
-        </div>
+        ) : (
+          <div className="px-4 py-4 border-t border-border relative z-10 flex flex-col gap-2">
+            <p className="text-[11px] text-text-tertiary text-center mb-1">Sign in to sync your progress</p>
+            <Link to="/login" className="flex justify-center items-center py-2 bg-gradient-to-r from-accent to-amber-500 hover:from-accent-hover hover:to-amber-400 text-black text-[13px] font-semibold rounded-lg shadow-[0_0_15px_rgba(226,179,64,0.15)] transition-all">
+              Sign In
+            </Link>
+            <Link to="/register" className="flex justify-center items-center py-2 bg-white/[0.03] hover:bg-white/[0.08] text-text-secondary text-[13px] font-medium rounded-lg border border-border transition-all">
+              Create Account
+            </Link>
+          </div>
+        )}
       </aside>
 
       {/* ─── Main ─── */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
         {/* Mobile header */}
-        <div className="md:hidden h-12 border-b border-border-dark/70 flex items-center justify-between px-4 bg-background-dark/90 backdrop-blur-xl sticky top-0 z-20">
+        <div className="md:hidden h-12 border-b border-border flex items-center justify-between px-4 glass-panel sticky top-0 z-20">
           <div className="flex items-center gap-2">
-            <div className="size-6 rounded-md bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center">
-              <span className="material-symbols-outlined text-white text-[14px]">code</span>
+            <div className="size-6 rounded-[6px] bg-gradient-to-br from-accent to-amber-600 flex items-center justify-center">
+              <span className="material-symbols-outlined text-black text-[14px]">code</span>
             </div>
             <span className="font-semibold text-sm">DSAstra</span>
           </div>
-          <button className="text-subtle-text hover:text-white p-1"><span className="material-symbols-outlined text-[20px]">menu</span></button>
+          <div className="flex items-center gap-3">
+            {!user && (
+              <Link to="/login" className="text-[11px] font-semibold text-accent px-2.5 py-1 rounded-md bg-accent/10 border border-accent/20">
+                Sign In
+              </Link>
+            )}
+            <button className="text-text-secondary hover:text-text-primary p-1 transition-colors">
+              <span className="material-symbols-outlined text-[20px]">menu</span>
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-[1120px] mx-auto px-6 md:px-10 py-8 md:py-10 space-y-8">
 
             {/* ── Welcome ── */}
-            <section className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <section className="flex flex-col md:flex-row md:items-end justify-between gap-4 animate-fade-in-up">
               <div>
-                <h1 className="text-[26px] md:text-[30px] font-semibold tracking-[-0.025em] text-white leading-tight">
-                  {greeting}, {userName}
+                <h1 className="text-[26px] md:text-[30px] font-semibold tracking-[-0.025em] leading-tight">
+                  <span className="text-gradient-white">{greeting},</span>{" "}
+                  <span className="text-gradient-gold">{userName}</span>
                 </h1>
-                <p className="text-zinc-500 text-[13px] mt-1.5 flex items-center gap-3 flex-wrap">
-                  <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[14px] text-emerald-500">check_circle</span>452 solved</span>
-                  <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[14px] text-orange-500">local_fire_department</span>12 day streak</span>
-                  <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[14px] text-blue-400">military_tech</span>Specialist</span>
+                <p className="text-text-secondary text-[13px] mt-1.5 flex items-center gap-3 flex-wrap">
+                  <span className="flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[14px] text-emerald">check_circle</span>
+                    {stats.solvedCount} solved
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[14px] text-orange">local_fire_department</span>
+                    {stats.streak} day streak
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[14px] text-accent">military_tech</span>
+                    {platforms[0]?.rank || "Unrated"}
+                  </span>
                 </p>
               </div>
-              <div className="flex gap-2">
-                <button className="flex items-center gap-1.5 px-3 py-1.5 border border-border-dark/60 rounded-lg text-[12px] font-medium text-zinc-400 hover:text-white hover:border-zinc-600 transition-all">
-                  <span className="material-symbols-outlined text-[15px]">sync</span>Sync
+              <div className="flex items-center gap-2">
+                {!user && (
+                  <Link to="/login" className="hidden md:flex items-center gap-1.5 px-3 py-1.5 border border-accent/30 rounded-xl text-[12px] font-medium text-accent hover:bg-accent/10 transition-all duration-200">
+                    Sign In
+                  </Link>
+                )}
+                <button
+                  onClick={handleSync}
+                  disabled={syncing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-xl text-[12px] font-medium text-text-secondary hover:text-text-primary hover:border-border-hover hover:bg-white/[0.03] transition-all duration-200 disabled:opacity-50"
+                >
+                  <span className={`material-symbols-outlined text-[15px] ${syncing ? "animate-spin" : ""}`}>sync</span>
+                  {syncing ? "Syncing…" : "Sync"}
                 </button>
-                <Link to="/problems" className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-[12px] font-medium text-white transition-all">
-                  <span className="material-symbols-outlined text-[15px]">play_arrow</span>Solve
+                <Link to="/problems"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-accent to-amber-500 hover:from-accent-hover hover:to-amber-400 rounded-xl text-[12px] font-semibold text-black transition-all duration-200 hover:shadow-lg group/solve">
+                  <span className="material-symbols-outlined text-[15px]">play_arrow</span>
+                  Solve
                 </Link>
               </div>
             </section>
 
             {/* ── Platform Ratings ── */}
             <section className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {platforms.map((p) => (
-                <div key={p.name} className="group relative rounded-xl border border-border-dark/50 bg-white/[0.015] p-5 overflow-hidden hover:border-zinc-700 transition-all">
-                  {/* Subtle gradient glow */}
-                  <div className="absolute -top-12 -right-12 w-32 h-32 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" style={{ background: p.color + '15' }}></div>
-
+              {platforms.map((p, i) => (
+                <div key={p.name}
+                  className={`group relative glass-card rounded-2xl p-5 overflow-hidden animate-fade-in-up stagger-${i + 1}`}>
+                  <div className="absolute -top-12 -right-12 w-32 h-32 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
+                    style={{ background: p.color + "12" }} />
                   <div className="relative z-10">
-                    {/* Header */}
                     <div className="flex items-center justify-between mb-5">
                       <div className="flex items-center gap-2.5">
-                        <div className="size-8 rounded-lg flex items-center justify-center" style={{ background: p.color + '18', border: `1px solid ${p.color}25` }}>
-                          <PlatformIcon platform={p.name} size={16} style={{ color: p.color }} className={`${p.name === 'Codeforces' ? 'text-blue-400' : p.name === 'LeetCode' ? 'text-amber-400' : 'text-orange-400'}`} />
+                        <div className="size-8 rounded-xl flex items-center justify-center"
+                          style={{ background: p.color + "15", border: `1px solid ${p.color}20` }}>
+                          <PlatformIcon platform={p.name} size={16}
+                            className={`${p.name === "Codeforces" ? "text-blue" : p.name === "LeetCode" ? "text-amber" : "text-orange"}`} />
                         </div>
                         <div className="leading-none">
-                          <span className="text-[13px] font-medium text-white block">{p.name}</span>
-                          <span className="text-[10px] text-zinc-600">@{p.handle}</span>
+                          <span className="text-[13px] font-medium text-text-primary block">{p.name}</span>
+                          {p.handle ? (
+                            <span className="text-[10px] text-text-tertiary font-mono">@{p.handle}</span>
+                          ) : (
+                            <button
+                              onClick={() => setShowHandlesModal(true)}
+                              className="text-[10px] text-accent-secondary hover:text-violet transition-colors duration-200"
+                            >
+                              + Add handle
+                            </button>
+                          )}
                         </div>
                       </div>
                       <Sparkline data={p.sparkline} color={p.color} />
                     </div>
-
-                    {/* Rating */}
                     <div className="flex items-end justify-between">
                       <div>
-                        <div className="text-[32px] font-bold text-white tracking-tight leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        <div className="text-[32px] font-bold text-text-primary tracking-tight leading-none"
+                          style={{ fontVariantNumeric: "tabular-nums" }}>
                           {p.rating.toLocaleString()}
                         </div>
                         <div className="flex items-center gap-2.5 mt-2.5">
-                          <span className="text-[10px] font-semibold px-2 py-[3px] rounded-md uppercase tracking-wider" style={{ background: p.color + '15', color: p.color, border: `1px solid ${p.color}20` }}>
+                          <span className="text-[10px] font-semibold px-2 py-[3px] rounded-lg uppercase tracking-wider"
+                            style={{ background: p.color + "12", color: p.color, border: `1px solid ${p.color}18` }}>
                             {p.rank}
                           </span>
-                          <span className={`text-[11px] font-medium flex items-center gap-0.5 ${p.delta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            <span className="material-symbols-outlined text-[13px]">{p.delta >= 0 ? 'trending_up' : 'trending_down'}</span>
-                            {p.delta >= 0 ? '+' : ''}{p.delta}
-                          </span>
+                          {p.sparkline.length >= 2 && (
+                            <span className={`text-[11px] font-medium flex items-center gap-0.5 ${p.delta >= 0 ? "text-emerald" : "text-rose"}`}>
+                              <span className="material-symbols-outlined text-[13px]">
+                                {p.delta >= 0 ? "trending_up" : "trending_down"}
+                              </span>
+                              {p.delta >= 0 ? "+" : ""}{p.delta}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div className="text-right">
-                        <span className="text-[10px] text-zinc-600 block">Peak</span>
-                        <span className="text-[14px] font-semibold text-zinc-400" style={{ fontVariantNumeric: 'tabular-nums' }}>{p.maxRating}</span>
+                        <span className="text-[10px] text-text-muted block">Peak</span>
+                        <span className="text-[14px] font-semibold text-text-secondary font-mono" style={{ fontVariantNumeric: "tabular-nums" }}>
+                          {p.maxRating || "—"}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -318,168 +597,228 @@ const Home = () => {
             {/* ── Stats ── */}
             <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               {/* Solved */}
-              <div className="rounded-xl border border-border-dark/50 bg-white/[0.015] p-4 relative overflow-hidden group">
+              <div className="glass-card rounded-2xl p-4 relative overflow-hidden animate-fade-in-up stagger-1">
                 <div className="absolute -bottom-4 -right-4 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity">
                   <span className="material-symbols-outlined text-[72px]">check_circle</span>
                 </div>
-                <span className="text-[11px] text-zinc-500 uppercase tracking-wider font-medium block mb-3">Total Solved</span>
-                <span className="text-[28px] font-bold text-white tracking-tight leading-none block" style={{ fontVariantNumeric: 'tabular-nums' }}>452</span>
-                <div className="flex gap-0.5 mt-3 w-full h-1.5 rounded-full overflow-hidden">
-                  <div className="bg-emerald-500 rounded-l-full" style={{ width: '44%' }}></div>
-                  <div className="bg-amber-500" style={{ width: '47%' }}></div>
-                  <div className="bg-rose-500 rounded-r-full" style={{ width: '9%' }}></div>
+                <span className="text-[11px] text-text-tertiary uppercase tracking-wider font-medium block mb-3">Total Solved</span>
+                <span className="text-[28px] font-bold text-text-primary tracking-tight leading-none block" style={{ fontVariantNumeric: "tabular-nums" }}>
+                  {(stats.solvedCount || 0) + (stats.externalStats?.leetcode?.totalSolved || 0)}
+                </span>
+                <div className="flex gap-0.5 mt-3 w-full h-1.5 rounded-full overflow-hidden bg-white/[0.03]">
+                  <div className="bg-emerald rounded-l-full transition-all duration-700" style={{ width: "40%" }} />
+                  <div className="bg-amber transition-all duration-700" style={{ width: "40%" }} />
+                  <div className="bg-rose rounded-r-full transition-all duration-700" style={{ width: "20%" }} />
                 </div>
                 <div className="flex justify-between mt-2 text-[10px] font-medium">
-                  <span className="text-emerald-500">200 Easy</span>
-                  <span className="text-amber-500">210 Med</span>
-                  <span className="text-rose-500">42 Hard</span>
+                  <span className="text-emerald">Easy</span>
+                  <span className="text-amber">Med</span>
+                  <span className="text-rose">Hard</span>
                 </div>
               </div>
 
               {/* Streak */}
-              <div className="rounded-xl border border-border-dark/50 bg-white/[0.015] p-4 relative overflow-hidden group">
+              <div className="glass-card rounded-2xl p-4 relative overflow-hidden animate-fade-in-up stagger-2">
                 <div className="absolute -bottom-4 -right-4 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity">
-                  <span className="material-symbols-outlined text-[72px] text-orange-500">local_fire_department</span>
+                  <span className="material-symbols-outlined text-[72px] text-orange">local_fire_department</span>
                 </div>
-                <span className="text-[11px] text-zinc-500 uppercase tracking-wider font-medium block mb-3">Streak</span>
+                <span className="text-[11px] text-text-tertiary uppercase tracking-wider font-medium block mb-3">Streak</span>
                 <div className="flex items-baseline gap-1.5">
-                  <span className="text-[28px] font-bold text-white tracking-tight leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>12</span>
-                  <span className="text-[13px] text-zinc-600 font-medium">days</span>
+                  <span className="text-[28px] font-bold text-text-primary tracking-tight leading-none" style={{ fontVariantNumeric: "tabular-nums" }}>
+                    {stats.streak}
+                  </span>
+                  <span className="text-[13px] text-text-muted font-medium">days</span>
                 </div>
+                {/* Real last 7 days bars */}
                 <div className="flex gap-1 mt-3">
-                  {["M","T","W","T","F","S","S"].map((d, i) => (
+                  {streakWeekBars.map((d, i) => (
                     <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                      <div className={`w-full h-2 rounded-sm ${i < 5 ? 'bg-orange-500' : i === 5 ? 'bg-orange-500/30' : 'bg-zinc-800'}`}></div>
-                      <span className="text-[8px] text-zinc-600 font-medium">{d}</span>
+                      <div className={`w-full h-2 rounded-sm transition-all duration-300 ${d.active ? "bg-gradient-to-t from-orange to-amber" : d.isToday ? "bg-orange/20" : "bg-white/[0.04]"}`} />
+                      <span className="text-[8px] text-text-muted font-medium">{d.day}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Best Rank */}
-              <div className="rounded-xl border border-border-dark/50 bg-white/[0.015] p-4 relative overflow-hidden group">
+              {/* Best Rating */}
+              <div className="glass-card rounded-2xl p-4 relative overflow-hidden animate-fade-in-up stagger-3">
                 <div className="absolute -bottom-4 -right-4 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity">
-                  <span className="material-symbols-outlined text-[72px] text-violet-500">emoji_events</span>
+                  <span className="material-symbols-outlined text-[72px] text-accent-secondary">emoji_events</span>
                 </div>
-                <span className="text-[11px] text-zinc-500 uppercase tracking-wider font-medium block mb-3">Best Rating</span>
-                <span className="text-[28px] font-bold text-white tracking-tight leading-none block" style={{ fontVariantNumeric: 'tabular-nums' }}>1,920</span>
+                <span className="text-[11px] text-text-tertiary uppercase tracking-wider font-medium block mb-3">Best Rating</span>
+                <span className="text-[28px] font-bold text-text-primary tracking-tight leading-none block" style={{ fontVariantNumeric: "tabular-nums" }}>
+                  {Math.max(...platforms.map((p) => p.maxRating), 0).toLocaleString() || "—"}
+                </span>
                 <div className="flex items-center gap-2 mt-2.5">
-                  <span className="text-[10px] font-semibold px-1.5 py-[3px] rounded-md bg-amber-500/12 text-amber-400 border border-amber-500/15 uppercase tracking-wider">Knight</span>
-                  <span className="text-[10px] text-zinc-600">on LeetCode</span>
+                  <span className="text-[10px] font-semibold px-1.5 py-[3px] rounded-lg bg-amber/10 text-amber border border-amber/15 uppercase tracking-wider">
+                    {platforms.reduce((best, p) => p.maxRating > best.maxRating ? p : best, platforms[0])?.rank || "Unrated"}
+                  </span>
+                  <span className="text-[10px] text-text-muted">
+                    on {platforms.reduce((best, p) => p.maxRating > best.maxRating ? p : best, platforms[0])?.name || "N/A"}
+                  </span>
                 </div>
               </div>
 
-              {/* Contests */}
-              <div className="rounded-xl border border-border-dark/50 bg-white/[0.015] p-4 relative overflow-hidden group">
+              {/* Submissions */}
+              <div className="glass-card rounded-2xl p-4 relative overflow-hidden animate-fade-in-up stagger-4">
                 <div className="absolute -bottom-4 -right-4 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity">
                   <span className="material-symbols-outlined text-[72px]">trophy</span>
                 </div>
-                <span className="text-[11px] text-zinc-500 uppercase tracking-wider font-medium block mb-3">Contests</span>
-                <span className="text-[28px] font-bold text-white tracking-tight leading-none block" style={{ fontVariantNumeric: 'tabular-nums' }}>38</span>
+                <span className="text-[11px] text-text-tertiary uppercase tracking-wider font-medium block mb-3">Submissions</span>
+                <span className="text-[28px] font-bold text-text-primary tracking-tight leading-none block" style={{ fontVariantNumeric: "tabular-nums" }}>
+                  {Object.values(stats.heatmapData || {}).reduce((a, b) => a + b, 0)}
+                </span>
                 <div className="flex items-end justify-between mt-2">
-                  <span className="text-[10px] text-zinc-600">participated</span>
+                  <span className="text-[10px] text-text-muted">last 365 days</span>
                   <div className="flex items-center gap-1">
                     <div className="relative">
-                      <ProgressRing value={72} max={100} size={32} strokeWidth={2.5} color="#10b981" />
-                      <span className="absolute inset-0 flex items-center justify-center text-[8px] font-bold text-emerald-400">72%</span>
+                      <ProgressRing
+                        value={Math.min(stats.activeDays, 365)}
+                        max={365}
+                        size={32}
+                        strokeWidth={2.5}
+                        color="#34d399"
+                      />
+                      <span className="absolute inset-0 flex items-center justify-center text-[7px] font-bold text-emerald font-mono">
+                        {Math.round((stats.activeDays / 365) * 100)}%
+                      </span>
                     </div>
-                    <span className="text-[9px] text-zinc-600 leading-tight">win<br/>rate</span>
+                    <span className="text-[9px] text-text-muted leading-tight">active<br/>days</span>
                   </div>
                 </div>
               </div>
             </section>
 
             {/* ── Heatmap ── */}
-            <section className="rounded-xl border border-border-dark/50 bg-white/[0.015] p-5 md:p-6">
+            <section className="glass-card rounded-2xl p-5 md:p-6 animate-fade-in-up stagger-5">
               <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-[15px] font-medium text-zinc-200">Activity</h2>
-                  <span className="text-[11px] text-zinc-600 bg-white/[0.04] px-2 py-0.5 rounded-md border border-border-dark/40">365 days</span>
+                  <h2 className="text-[15px] font-medium text-text-primary">Activity</h2>
+                  <span className="text-[11px] text-text-tertiary bg-white/[0.03] px-2 py-0.5 rounded-lg border border-border font-mono">365 days</span>
                 </div>
-                <div className="flex items-center gap-3 text-[11px] text-zinc-500">
-                  <span><strong className="text-white font-semibold">247</strong> active days</span>
-                  <span><strong className="text-white font-semibold">3.2</strong> avg/day</span>
+                <div className="flex items-center gap-3 text-[11px] text-text-secondary">
+                  <span>
+                    <strong className="text-text-primary font-semibold">{stats.activeDays}</strong> active days
+                  </span>
+                  <span>
+                    <strong className="text-text-primary font-semibold">{stats.avgPerDay}</strong> avg/day
+                  </span>
                 </div>
               </div>
-              <Heatmap />
+              {statsLoading ? (
+                <div className="h-32 w-full mt-4 rounded-xl bg-white/[0.02] border border-border animate-shimmer" />
+              ) : (
+                <Heatmap heatmapData={stats.heatmapData} />
+              )}
             </section>
 
             {/* ── Contests + Practice ── */}
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
               {/* Upcoming Contests */}
-              <section className="lg:col-span-3 rounded-xl border border-border-dark/50 bg-white/[0.015] overflow-hidden">
-                <div className="px-5 py-3.5 border-b border-border-dark/40 flex items-center justify-between">
-                  <h2 className="text-[14px] font-medium text-zinc-200 flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[16px] text-orange-400">schedule</span>
+              <section className="lg:col-span-3 glass-panel rounded-2xl overflow-hidden animate-fade-in-up stagger-5">
+                <div className="px-5 py-3.5 border-b border-border flex items-center justify-between">
+                  <h2 className="text-[14px] font-medium text-text-primary flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[16px] text-orange">schedule</span>
                     Upcoming Contests
                   </h2>
-                  <button className="text-[11px] text-zinc-600 hover:text-white transition-colors flex items-center gap-1">
-                    Calendar<span className="material-symbols-outlined text-[13px]">arrow_forward</span>
-                  </button>
                 </div>
-                {contests.map((c, i) => (
-                  <div key={i} className="px-5 py-3 flex items-center justify-between gap-3 border-b border-border-dark/20 last:border-b-0 hover:bg-white/[0.01] transition-colors group">
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="size-2 rounded-full shrink-0" style={{ background: c.color }}></div>
-                      <div className="min-w-0">
-                        <span className="text-[13px] font-medium text-zinc-200 group-hover:text-white transition-colors block truncate">{c.title}</span>
-                        <span className="text-[10px] text-zinc-600">{c.time}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2.5 shrink-0">
-                      <span className="text-[11px] font-mono text-zinc-400 bg-white/[0.03] px-2 py-0.5 rounded border border-border-dark/30" style={{ fontVariantNumeric: 'tabular-nums' }}>{c.countdown}</span>
-                      <span className="text-[10px] text-emerald-500 font-semibold w-6 text-right">{c.pred}</span>
-                    </div>
+
+                {contestsLoading ? (
+                  <div className="p-5 space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="h-12 rounded-xl bg-white/[0.02] animate-shimmer" />
+                    ))}
                   </div>
-                ))}
+                ) : contests.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-10 text-text-muted text-[12px]">
+                    <span className="material-symbols-outlined text-[32px] mb-2">event_busy</span>
+                    No upcoming contests found
+                  </div>
+                ) : (
+                  contests.slice(0, 6).map((c, i) => (
+                    <a
+                      key={c.id || i}
+                      href={c.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-5 py-3 flex items-center justify-between gap-3 border-b border-border/50 last:border-b-0 hover:bg-white/[0.02] transition-all duration-200 group"
+                    >
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className="size-2 rounded-full shrink-0" style={{ background: c.color, boxShadow: `0 0 6px ${c.color}40` }} />
+                        <div className="min-w-0">
+                          <span className="text-[13px] font-medium text-text-secondary group-hover:text-text-primary transition-colors duration-200 block truncate">{c.title}</span>
+                          <span className="text-[10px] text-text-muted">{formatContestTime(c.startTime)}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2.5 shrink-0">
+                        <span className="text-[11px] font-mono text-text-secondary bg-white/[0.03] px-2 py-0.5 rounded-md border border-border">
+                          {formatCountdown(c.startTime)}
+                        </span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md border"
+                          style={{ background: c.color + "12", color: c.color, borderColor: c.color + "20" }}>
+                          {c.platformKey}
+                        </span>
+                      </div>
+                    </a>
+                  ))
+                )}
               </section>
 
               {/* Contest Prep */}
-              <section className="lg:col-span-2 flex flex-col gap-3">
+              <section className="lg:col-span-2 flex flex-col gap-3 animate-fade-in-up stagger-6">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-[14px] font-medium text-zinc-200 flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[16px] text-violet-400">fitness_center</span>
+                  <h2 className="text-[14px] font-medium text-text-primary flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[16px] text-accent">fitness_center</span>
                     Contest Prep
                   </h2>
                 </div>
 
                 {prepCards.map((card, i) => (
-                  <div key={i} className="rounded-xl border border-border-dark/50 bg-white/[0.015] p-4 group hover:border-zinc-700 transition-all relative overflow-hidden">
-                    <div className="absolute -top-8 -right-8 w-20 h-20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" style={{ background: card.color + '10' }}></div>
+                  <Link
+                    key={i}
+                    to={`/problems?platform=${card.platform}`}
+                    className="glass-card rounded-2xl p-4 group hover:border-border-hover transition-all duration-300 relative overflow-hidden block"
+                  >
+                    <div className="absolute -top-8 -right-8 w-20 h-20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
+                      style={{ background: card.color + "10" }} />
                     <div className="relative z-10">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <div className="size-6 rounded-md flex items-center justify-center" style={{ background: card.color + '15', border: `1px solid ${card.color}20` }}>
-                            <PlatformIcon platform={card.platform} size={13} className={`${card.platform === 'Codeforces' ? 'text-blue-400' : card.platform === 'LeetCode' ? 'text-amber-400' : 'text-orange-400'}`} />
+                          <div className="size-6 rounded-lg flex items-center justify-center"
+                            style={{ background: card.color + "12", border: `1px solid ${card.color}18` }}>
+                            <PlatformIcon platform={card.platform} size={13}
+                              className={`${card.platform === "Codeforces" ? "text-blue" : card.platform === "LeetCode" ? "text-amber" : "text-orange"}`} />
                           </div>
-                          <span className="text-[13px] font-medium text-white">{card.title}</span>
+                          <span className="text-[13px] font-medium text-text-primary">{card.title}</span>
                         </div>
-                        <span className="text-[10px] text-zinc-600">{card.problems} problems</span>
+                        <span className="text-[10px] text-text-muted font-mono">
+                          {card.problems > 0 ? `${card.problems} problems` : "—"}
+                        </span>
                       </div>
-                      <p className="text-[11px] text-zinc-500 leading-relaxed mb-3">{card.desc}</p>
-                      <button className="text-[11px] font-medium text-zinc-400 hover:text-white transition-colors flex items-center gap-1 group/btn">
+                      <p className="text-[11px] text-text-secondary leading-relaxed mb-3">{card.desc}</p>
+                      <span className="text-[11px] font-medium text-text-secondary group-hover:text-text-primary transition-colors duration-200 flex items-center gap-1">
                         Start Practice
-                        <span className="material-symbols-outlined text-[13px] group-hover/btn:translate-x-0.5 transition-transform">arrow_forward</span>
-                      </button>
+                        <span className="material-symbols-outlined text-[13px] group-hover:translate-x-0.5 transition-transform duration-200">arrow_forward</span>
+                      </span>
                     </div>
-                  </div>
+                  </Link>
                 ))}
 
                 {/* AI Teaser */}
-                <div className="rounded-xl border border-dashed border-zinc-800 p-4 flex items-start gap-3">
-                  <div className="size-8 rounded-lg bg-violet-500/10 border border-violet-500/15 flex items-center justify-center shrink-0 mt-0.5">
-                    <span className="material-symbols-outlined text-[16px] text-violet-400">auto_awesome</span>
+                <div className="rounded-2xl border border-dashed border-accent-secondary/15 p-4 flex items-start gap-3 bg-accent-secondary/[0.02]">
+                  <div className="size-8 rounded-xl bg-accent-secondary/10 border border-accent-secondary/15 flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="material-symbols-outlined text-[16px] text-accent-secondary">auto_awesome</span>
                   </div>
                   <div>
-                    <span className="text-[12px] font-medium text-zinc-300 block mb-0.5">AI Roadmaps</span>
-                    <p className="text-[11px] text-zinc-600 leading-relaxed">
-                      Personalized contest strategies, targeted problem sets & spaced repetition — <span className="text-violet-400 font-medium">coming soon</span>
+                    <span className="text-[12px] font-medium text-text-primary block mb-0.5">AI Roadmaps</span>
+                    <p className="text-[11px] text-text-tertiary leading-relaxed">
+                      Personalized contest strategies, targeted problem sets &amp; spaced repetition —{" "}
+                      <span className="text-accent-secondary font-medium">coming soon</span>
                     </p>
                   </div>
                 </div>
               </section>
             </div>
-
           </div>
         </div>
       </main>

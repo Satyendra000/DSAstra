@@ -2,3 +2,8 @@ node_modules
 .env
 dist
 build
+docs/
+idea.txt
+Idea.txt
+project2.pdf
+project-context.txt
