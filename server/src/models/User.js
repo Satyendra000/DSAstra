@@ -36,6 +36,10 @@ const userSchema = new mongoose.Schema({
     enum: ["user", "admin"],
     default: "user",
   },
+  points: {
+    type: Number,
+    default: 0,
+  },
   ratingHistory: [
     {
       platform: String,
@@ -49,7 +53,10 @@ const userSchema = new mongoose.Schema({
   solvedProblems: [
     {
       problemId: String,
+      title: String,
       platform: String,
+      pointsEarned: { type: Number, default: 10 },
+      focusMode: { type: Boolean, default: false },
       solvedAt: {
         type: Date,
         default: Date.now,

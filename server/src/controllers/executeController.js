@@ -62,6 +62,23 @@ exports.executeCode = async (req, res) => {
 
     const judge0Url = process.env.JUDGE0_API_URL || "http://localhost:2358";
 
+    // Convert LeetCode bracket-format inputs to plain whitespace format
+    // e.g. "[2,7,11,15]\n9" → "4\n2 7 11 15\n9"
+    let processedInput = input || "";
+    if (executionCode !== code) {
+      // Driver code is active — convert bracket arrays to plain format
+      processedInput = processedInput.split("\n").map(line => {
+        const trimmed = line.trim();
+        if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+          const inner = trimmed.slice(1, -1).trim();
+          if (inner === "") return "0\n"; // empty array
+          const elements = inner.split(",").map(s => s.trim());
+          return elements.length + "\n" + elements.join(" ");
+        }
+        return trimmed;
+      }).join("\n");
+    }
+
     // Base64-encode inputs to avoid UTF-8 conversion errors
     const b64 = (str) => Buffer.from(str || "").toString("base64");
     const dec = (str) => str ? Buffer.from(str, "base64").toString("utf-8") : null;
@@ -70,7 +87,7 @@ exports.executeCode = async (req, res) => {
       `${judge0Url}/submissions?base64_encoded=true&wait=true`,
       {
         source_code: b64(executionCode),
-        stdin: b64(input || ""),
+        stdin: b64(processedInput),
         language_id,
       },
       {
@@ -92,10 +109,42 @@ exports.executeCode = async (req, res) => {
     const decodedCompile = dec(compile_output);
     console.log("[Execute] Decoded output:", { decodedStdout, decodedStderr, decodedCompile });
 
+    // Generate Expected Output dynamically if requested
+    let dynamicExpectedOutput = null;
+    if (req.body.generateExpected) {
+      try {
+        const mongoose = require("mongoose");
+        const problem = mongoose.isValidObjectId(problemId)
+          ? await Problem.findById(problemId)
+          : await Problem.findOne({ problemId });
+
+        if (problem && problem.referenceSolution && problem.driverCode?.cpp) {
+          console.log("[Execute] Generating dynamic expected output using referenceSolution...");
+          const refCode = problem.driverCode.cpp.replace("${USER_CODE_PLACEHOLDER}", problem.referenceSolution);
+          const refResponse = await axios.post(
+            `${judge0Url}/submissions?base64_encoded=true&wait=true`,
+            {
+              source_code: b64(refCode),
+              stdin: b64(processedInput),
+              language_id: 54, // Always C++ for referenceSolution
+            },
+            { headers: { "Content-Type": "application/json" }, timeout: 30000 }
+          );
+          if (refResponse.data.status.id === 3) {
+            dynamicExpectedOutput = dec(refResponse.data.stdout);
+            console.log("[Execute] Dynamic Expected Output generated:", dynamicExpectedOutput);
+          }
+        }
+      } catch (e) {
+        console.warn("[Execute] Failed to generate dynamic expected output:", e.message);
+      }
+    }
+
     res.json({
       stdout: decodedStdout || null,
       stderr: decodedStderr || null,
       compile_output: decodedCompile || null,
+      expectedOutput: dynamicExpectedOutput || null,
       message: message || null,
       status: status?.description,
       status_id: status?.id,

@@ -12,12 +12,29 @@ async function fetchCodeforcesStats(handle) {
     );
     if (res.data.status === "OK" && res.data.result?.length > 0) {
       const user = res.data.result[0];
+      
+      let totalSolved = 0;
+      try {
+        const statusRes = await axios.get(`https://codeforces.com/api/user.status?handle=${encodeURIComponent(handle)}`, { timeout: 10000 });
+        if (statusRes.data.status === "OK") {
+          const uniqueProblems = new Set(
+            statusRes.data.result
+              .filter(s => s.verdict === "OK")
+              .map(s => s.problem.name)
+          );
+          totalSolved = uniqueProblems.size;
+        }
+      } catch (err) {
+        console.warn(`[PlatformSync] Codeforces status fetch failed for "${handle}":`, err.message);
+      }
+
       return {
         platform: "Codeforces",
         rating: user.rating || 0,
         maxRating: user.maxRating || 0,
         rank: user.rank || "unrated",
         handle: user.handle,
+        totalSolved,
       };
     }
   } catch (err) {
@@ -197,6 +214,10 @@ async function fetchCodeChefStats(handle) {
     const starsMatch = html.match(/(\d+)★/);
     const stars = starsMatch ? `${starsMatch[1]}★` : "1★";
     
+    // Extract total solved
+    const solvedMatch = html.match(/Total Problems Solved:\s*(\d+)/i);
+    const totalSolved = solvedMatch ? parseInt(solvedMatch[1], 10) : 0;
+    
     // Extract real contest history
     let historyList = [];
     try {
@@ -218,6 +239,7 @@ async function fetchCodeChefStats(handle) {
       maxRating,
       rank: stars || (rating > 0 ? `${rating}` : "Unrated"),
       handle,
+      totalSolved,
       history: historyList,
     };
   } catch (err) {
@@ -301,14 +323,14 @@ async function syncPlatformData(user) {
   // Store external solved counts and heatmaps safely (don't overwrite with null if API fails)
   const existingStats = user.externalStats || {};
   user.externalStats = {
-    codeforces: cfStats ? { rating: cfStats.rating, maxRating: cfStats.maxRating, rank: cfStats.rank } : existingStats.codeforces,
+    codeforces: cfStats ? { rating: cfStats.rating, maxRating: cfStats.maxRating, rank: cfStats.rank, totalSolved: cfStats.totalSolved } : existingStats.codeforces,
     leetcode: lcStats ? { 
       rating: lcStats.rating, 
       totalSolved: lcStats.totalSolved, 
       contestsAttended: lcStats.contestsAttended,
       heatmap: lcStats.heatmap // pass to db
     } : existingStats.leetcode,
-    codechef: ccStats ? { rating: ccStats.rating, maxRating: ccStats.maxRating, rank: ccStats.rank } : existingStats.codechef,
+    codechef: ccStats ? { rating: ccStats.rating, maxRating: ccStats.maxRating, rank: ccStats.rank, totalSolved: ccStats.totalSolved } : existingStats.codechef,
   };
   user.markModified("externalStats");
   results.updated = true;

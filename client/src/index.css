@@ -1,54 +1,54 @@
 @import "tailwindcss";
 
 @theme {
-  /* ── Core Palette ── */
-  --color-bg-deep: #050507;
-  --color-bg-base: #0a0a0e;
-  --color-bg-elevated: #111116;
-  --color-bg-hover: #18181f;
-  --color-bg-active: #1e1e28;
+  /* ── Core Palette (Zinc) ── */
+  --color-bg-deep: #09090b;
+  --color-bg-base: #0f0f12;
+  --color-bg-elevated: #18181b;
+  --color-bg-hover: #27272a;
+  --color-bg-active: #3f3f46;
 
-  /* ── Accent ── */
-  --color-accent: #e2b340;
-  --color-accent-hover: #f0c650;
-  --color-accent-muted: #e2b34020;
-  --color-accent-subtle: #e2b34010;
+  /* ── Accent (Cobalt Blue) ── */
+  --color-accent: #3b82f6;
+  --color-accent-hover: #60a5fa;
+  --color-accent-muted: #3b82f620;
+  --color-accent-subtle: #3b82f610;
   --color-accent-secondary: #8b5cf6;
   --color-accent-secondary-muted: #8b5cf620;
 
   /* ── Text ── */
-  --color-text-primary: #ededef;
-  --color-text-secondary: #8a8f98;
-  --color-text-tertiary: #52545c;
-  --color-text-muted: #3a3c44;
+  --color-text-primary: #f4f4f5;
+  --color-text-secondary: #a1a1aa;
+  --color-text-tertiary: #71717a;
+  --color-text-muted: #52525b;
 
   /* ── Borders ── */
-  --color-border: rgba(255, 255, 255, 0.07);
-  --color-border-hover: rgba(255, 255, 255, 0.12);
-  --color-border-strong: rgba(255, 255, 255, 0.18);
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-hover: rgba(255, 255, 255, 0.15);
+  --color-border-strong: rgba(255, 255, 255, 0.25);
 
   /* ── Semantic ── */
-  --color-emerald: #34d399;
-  --color-amber: #fbbf24;
-  --color-rose: #fb7185;
-  --color-blue: #60a5fa;
-  --color-violet: #a78bfa;
-  --color-orange: #fb923c;
-  --color-cyan: #22d3ee;
+  --color-emerald: #10b981;
+  --color-amber: #f59e0b;
+  --color-rose: #f43f5e;
+  --color-blue: #3b82f6;
+  --color-violet: #8b5cf6;
+  --color-orange: #f97316;
+  --color-cyan: #06b6d4;
 
   /* ── Legacy compat (so existing Tailwind classes still work) ── */
-  --color-primary: #e2b340;
-  --color-primary-hover: #f0c650;
-  --color-background-light: #f6f6f8;
-  --color-background-dark: #050507;
-  --color-surface-dark: #111116;
-  --color-surface-hover: #18181f;
-  --color-border-dark: rgba(255, 255, 255, 0.07);
-  --color-subtle-text: #8a8f98;
+  --color-primary: #3b82f6;
+  --color-primary-hover: #60a5fa;
+  --color-background-light: #fafafa;
+  --color-background-dark: #09090b;
+  --color-surface-dark: #18181b;
+  --color-surface-hover: #27272a;
+  --color-border-dark: rgba(255, 255, 255, 0.08);
+  --color-subtle-text: #a1a1aa;
 
   /* ── Fonts ── */
-  --font-display: "Inter", system-ui, sans-serif;
-  --font-body: "Inter", system-ui, sans-serif;
+  --font-display: "Outfit", "Inter", system-ui, sans-serif;
+  --font-body: "Outfit", "Inter", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", monospace;
 
   /* ── Radius ── */
@@ -82,42 +82,44 @@ body {
 
 /* ══════════════════════════════════════════════════ Selection ══ */
 ::selection {
-  background: rgba(226, 179, 64, 0.2);
+  background: rgba(59, 130, 246, 0.25);
   color: white;
 }
 
 /* ══════════════════════════════════════════════════ Focus ══ */
 *:focus-visible {
-  outline: 2px solid rgba(226, 179, 64, 0.4);
+  outline: 2px solid rgba(59, 130, 246, 0.5);
   outline-offset: 2px;
 }
 
 /* ══════════════════════════════════════════════════ Glass ══ */
 .glass-panel {
-  background: rgba(17, 17, 22, 0.75);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(24, 24, 27, 0.7);
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .glass-card {
-  background: rgba(255, 255, 255, 0.02);
-  backdrop-filter: blur(12px) saturate(150%);
-  -webkit-backdrop-filter: blur(12px) saturate(150%);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.025);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   transition: all 0.3s var(--ease-spring);
 }
 
 .glass-card:hover {
-  background: rgba(255, 255, 255, 0.035);
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
 /* ══════════════════════════════════════════════════ Glow ══ */
 @keyframes glow-breathe {
-  0%, 100% { box-shadow: 0 0 20px rgba(226, 179, 64, 0.15), 0 0 0 1px rgba(226, 179, 64, 0.08); }
-  50% { box-shadow: 0 0 32px rgba(226, 179, 64, 0.25), 0 0 0 1px rgba(226, 179, 64, 0.12); }
+  0%, 100% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.15), 0 0 0 1px rgba(59, 130, 246, 0.08); }
+  50% { box-shadow: 0 0 32px rgba(59, 130, 246, 0.25), 0 0 0 1px rgba(59, 130, 246, 0.12); }
 }
 
 .glow-cta {
@@ -125,7 +127,7 @@ body {
 }
 
 .glow-accent {
-  box-shadow: 0 0 20px rgba(226, 179, 64, 0.1), 0 0 60px rgba(226, 179, 64, 0.05);
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.1), 0 0 60px rgba(59, 130, 246, 0.05);
 }
 
 .glow-violet {

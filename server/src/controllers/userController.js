@@ -227,7 +227,9 @@ const getUserStats = async (req, res) => {
     // Group submissions by date for heatmap
     const heatmapData = {};
     submissions.forEach(sub => {
-      const dateKey = sub.createdAt.toISOString().split('T')[0];
+      // Offset by 4 hours to align with 4 AM rollover (using absolute UTC time)
+      const logicalDate = new Date(sub.createdAt.getTime() - 4 * 60 * 60 * 1000);
+      const dateKey = logicalDate.toISOString().split('T')[0];
       if (!heatmapData[dateKey]) {
         heatmapData[dateKey] = 0;
       }
@@ -246,12 +248,17 @@ const getUserStats = async (req, res) => {
 
     // Calculate streak (consecutive days with submissions)
     let streak = 0;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Offset today by 4 hours to align with 4 AM rollover
+    const logicalToday = new Date(Date.now() - 4 * 60 * 60 * 1000);
+    const todayDateKey = logicalToday.toISOString().split('T')[0];
+    
+    // Create a normalized Date object at midnight UTC for today's logical date
+    const normalizedToday = new Date(todayDateKey + "T00:00:00Z");
     
     for (let i = 0; i < 365; i++) {
-      const checkDate = new Date(today);
-      checkDate.setDate(checkDate.getDate() - i);
+      const checkDate = new Date(normalizedToday);
+      checkDate.setUTCDate(checkDate.getUTCDate() - i);
+      
       const dateKey = checkDate.toISOString().split('T')[0];
       
       if (heatmapData[dateKey] && heatmapData[dateKey] > 0) {
@@ -305,17 +312,30 @@ const getUserStats = async (req, res) => {
       }
     });
 
-    res.json({
-      solvedCount,
-      streak,
-      heatmapData,
-      activeDays,
-      avgPerDay: parseFloat(avgPerDay),
-      contestsParticipated: user.contestsParticipated || 0,
-      platformHandles: user.platformHandles || { codeforces: "", leetcode: "", codechef: "" },
-      platformRatings: finalPlatformRatings,
-      targetRating: user.targetRating || 1500,
-      externalStats: user.externalStats || {}
+      const actualTotalPoints = user.solvedProblems.reduce((sum, p) => sum + (p.pointsEarned ?? 10), 0);
+
+      res.json({
+        solvedCount,
+        streak,
+        heatmapData,
+        activeDays,
+        avgPerDay: parseFloat(avgPerDay),
+        contestsParticipated: user.contestsParticipated || 0,
+        platformHandles: user.platformHandles || { codeforces: "", leetcode: "", codechef: "" },
+        platformRatings: finalPlatformRatings,
+        targetRating: user.targetRating || 1500,
+        externalStats: user.externalStats || {},
+        points: Math.max(user.points || 0, actualTotalPoints),
+      pointsHistory: [...user.solvedProblems]
+        .sort((a, b) => new Date(b.solvedAt) - new Date(a.solvedAt))
+        .slice(0, 30)
+        .map(p => ({
+          title: p.title || null,
+          platform: p.platform,
+          pointsEarned: p.pointsEarned ?? 10,
+          focusMode: p.focusMode || false,
+          solvedAt: p.solvedAt,
+        })),
     });
   } catch (error) {
     console.error("Stats Error:", error);

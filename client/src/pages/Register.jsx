@@ -24,8 +24,8 @@ const Register = () => {
         <div className="relative z-10 max-w-lg animate-fade-in-up">
           {/* Logo */}
           <div className="flex items-center gap-2.5 mb-14">
-            <div className="w-9 h-9 rounded-[10px] bg-gradient-to-br from-accent to-amber-600 flex items-center justify-center shadow-lg glow-accent">
-              <span className="material-symbols-outlined text-black text-[18px] font-bold">code</span>
+            <div className="w-9 h-9 rounded-[10px] bg-gradient-to-br from-accent to-blue-600 flex items-center justify-center shadow-lg glow-accent">
+              <span className="material-symbols-outlined text-white text-[18px] font-bold">code</span>
             </div>
             <span className="text-xl font-bold text-text-primary tracking-tight">DSAstra</span>
           </div>
@@ -34,7 +34,7 @@ const Register = () => {
           <h1 className="text-[48px] font-bold text-text-primary leading-[1.1] mb-6 tracking-[-0.03em]">
             <span className="text-gradient-white">Master Data</span><br />
             <span className="text-gradient-white">Structures &</span><br />
-            <span className="text-gradient-gold">Algorithms with AI.</span>
+            <span className="text-accent">Algorithms.</span>
           </h1>
 
           <p className="text-lg text-text-secondary mb-14 max-w-md leading-relaxed">
@@ -86,13 +86,13 @@ const Register = () => {
         <div className="relative z-10 flex items-center gap-4 mt-12 max-w-lg animate-fade-in-up stagger-5">
           <div className="flex -space-x-3">
             {[
-              "bg-gradient-to-br from-blue/60 to-blue/30",
+              "bg-gradient-to-br from-blue-500/60 to-blue-500/30",
               "bg-gradient-to-br from-accent-secondary/60 to-accent-secondary/30",
               "bg-gradient-to-br from-emerald/60 to-emerald/30",
             ].map((bg, i) => (
               <div key={i} className={`w-10 h-10 rounded-full border-2 border-bg-deep ${bg}`} />
             ))}
-            <div className="w-10 h-10 rounded-full border-2 border-bg-deep bg-gradient-to-br from-accent to-amber-600 flex items-center justify-center text-[10px] text-black font-bold">
+            <div className="w-10 h-10 rounded-full border-2 border-bg-deep bg-gradient-to-br from-accent to-blue-600 flex items-center justify-center text-[10px] text-white font-bold">
               +2k
             </div>
           </div>
@@ -114,24 +114,24 @@ const Register = () => {
             appearance={{
               baseTheme: dark,
               variables: {
-                colorPrimary: '#e2b340',
+                colorPrimary: '#3b82f6',
                 colorBackground: 'transparent',
-                colorInputBackground: '#111116',
-                colorInputText: '#ededef',
-                colorText: '#ededef',
-                colorTextSecondary: '#8a8f98',
-                fontFamily: '"Inter", system-ui, sans-serif',
+                colorInputBackground: '#18181b',
+                colorInputText: '#f4f4f5',
+                colorText: '#f4f4f5',
+                colorTextSecondary: '#a1a1aa',
+                fontFamily: '"Outfit", "Inter", system-ui, sans-serif',
                 borderRadius: '0.75rem',
               },
               elements: {
                 card: "bg-transparent shadow-none p-0 w-full",
                 headerTitle: "text-3xl font-bold text-text-primary mb-2 tracking-tight",
                 headerSubtitle: "text-text-secondary mb-8",
-                socialButtonsBlockButton: "border border-white/[0.08] hover:bg-white/[0.05] bg-white/[0.02] text-text-primary transition-all duration-200 rounded-xl",
+                socialButtonsBlockButton: "border border-white/[0.08] hover:bg-white/[0.05] bg-white/[0.02] text-text-primary transition-all duration-200 rounded-xl active:scale-[0.98]",
                 socialButtonsBlockButtonText: "font-normal hidden md:block",
-                formButtonPrimary: "font-semibold py-3 transition-all duration-200 text-black rounded-xl bg-accent hover:bg-accent-hover",
-                formFieldInput: "w-full border border-white/[0.08] focus:border-accent/50 focus:ring-1 focus:ring-accent/30 outline-none rounded-xl bg-bg-deep/50 transition-all duration-200",
-                formFieldLabel: "text-text-secondary font-medium text-[13px]",
+                formButtonPrimary: "font-semibold py-3 transition-all duration-200 text-white rounded-xl bg-accent hover:bg-accent-hover active:scale-[0.98]",
+                formFieldInput: "w-full border border-white/[0.08] focus:border-accent/50 focus:ring-1 focus:ring-accent/30 outline-none rounded-xl bg-bg-deep transition-all duration-200",
+                formFieldLabel: "text-text-secondary font-medium text-[13px] mb-2 block",
                 dividerLine: "bg-white/[0.06]",
                 dividerText: "text-text-tertiary px-2 bg-bg-base",
                 footerActionText: "text-text-secondary",

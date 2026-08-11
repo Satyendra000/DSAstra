@@ -114,6 +114,81 @@ function generateCppDriver(funcName, params, returnType, defaultCode) {
 using namespace std;
 
 // ─── Helper Functions ───
+struct ListNode {
+    int val;
+    ListNode *next;
+    ListNode() : val(0), next(nullptr) {}
+    ListNode(int x) : val(x), next(nullptr) {}
+    ListNode(int x, ListNode *next) : val(x), next(next) {}
+};
+
+struct TreeNode {
+    int val;
+    TreeNode *left;
+    TreeNode *right;
+    TreeNode() : val(0), left(nullptr), right(nullptr) {}
+    TreeNode(int x) : val(x), left(nullptr), right(nullptr) {}
+    TreeNode(int x, TreeNode *left, TreeNode *right) : val(x), left(left), right(right) {}
+};
+
+ListNode* parseLinkedList() {
+    string line; getline(cin, line);
+    if(line.empty()) return nullptr;
+    if(line.front() == '[') line = line.substr(1);
+    if(line.back() == ']') line.pop_back();
+    if(line.empty()) return nullptr;
+    stringstream ss(line); string item;
+    ListNode* dummy = new ListNode(0); ListNode* curr = dummy;
+    while (getline(ss, item, ',')) {
+        if(item.empty()) continue;
+        curr->next = new ListNode(stoi(item));
+        curr = curr->next;
+    }
+    return dummy->next;
+}
+
+void printLinkedList(ListNode* head) {
+    cout << "[";
+    while(head) { cout << head->val; if(head->next) cout << ","; head = head->next; }
+    cout << "]" << endl;
+}
+
+TreeNode* parseTree() {
+    string line; getline(cin, line);
+    if(line.empty()) return nullptr;
+    if(line.front() == '[') line = line.substr(1);
+    if(line.back() == ']') line.pop_back();
+    if(line.empty()) return nullptr;
+    stringstream ss(line); string item;
+    getline(ss, item, ',');
+    if(item == "null") return nullptr;
+    TreeNode* root = new TreeNode(stoi(item));
+    queue<TreeNode*> q; q.push(root);
+    while(!q.empty()) {
+        TreeNode* node = q.front(); q.pop();
+        if(!getline(ss, item, ',')) break;
+        if(item != "null" && item != "null ") { node->left = new TreeNode(stoi(item)); q.push(node->left); }
+        if(!getline(ss, item, ',')) break;
+        if(item != "null" && item != "null ") { node->right = new TreeNode(stoi(item)); q.push(node->right); }
+    }
+    return root;
+}
+
+void printTree(TreeNode* root) {
+    if(!root) { cout << "[]" << endl; return; }
+    vector<string> res; queue<TreeNode*> q; q.push(root);
+    while(!q.empty()) {
+        TreeNode* node = q.front(); q.pop();
+        if(node) { res.push_back(to_string(node->val)); q.push(node->left); q.push(node->right); }
+        else res.push_back("null");
+    }
+    while(!res.empty() && res.back() == "null") res.pop_back();
+    cout << "[";
+    for(int i=0; i<res.size(); i++) cout << res[i] << (i==res.size()-1 ? "" : ",");
+    cout << "]" << endl;
+}
+
+// ─── Primitive Parsers ───
 vector<int> parseIntArray() {
     string line; getline(cin, line);
     vector<int> arr;
@@ -197,7 +272,7 @@ int main() {
 ${inputParsing}
     ${isClassBased ? className + ' sol;' : ''}
     ${returnType !== 'void' ? `auto result = ${isClassBased ? 'sol.' : ''}${funcName}(${funcArgs.join(', ')});` : `${isClassBased ? 'sol.' : ''}${funcName}(${funcArgs.join(', ')});`}
-    ${returnType !== 'void' ? resultPrint + ' << endl;' : ''}
+    ${returnType !== 'void' ? (resultPrint.startsWith('cout') ? resultPrint + ' << endl;' : resultPrint + ';') : ''}
     
     return 0;
 }`;
@@ -211,7 +286,11 @@ function generatePythonDriver(funcName, params, returnType) {
     const param = params[i];
     const varName = param.name;
     
-    if (param.type.includes('[]') || param.type.includes('list')) {
+    if (param.type === 'ListNode') {
+      inputParsing += `    ${varName} = parse_linked_list(input().strip())\n`;
+    } else if (param.type === 'TreeNode') {
+      inputParsing += `    ${varName} = parse_tree(input().strip())\n`;
+    } else if (param.type.includes('[]') || param.type.includes('list')) {
       inputParsing += `    ${varName} = eval(input())\n`;
     } else if (param.type === 'integer' || param.type === 'long') {
       inputParsing += `    ${varName} = int(input())\n`;
@@ -228,6 +307,73 @@ function generatePythonDriver(funcName, params, returnType) {
   return `import sys
 from typing import List, Optional
 from collections import deque
+import json
+
+class ListNode:
+    def __init__(self, val=0, next=None):
+        self.val = val
+        self.next = next
+
+class TreeNode:
+    def __init__(self, val=0, left=None, right=None):
+        self.val = val
+        self.left = left
+        self.right = right
+
+def parse_linked_list(arr_str):
+    if not arr_str: return None
+    arr = json.loads(arr_str)
+    if not arr: return None
+    dummy = ListNode(0)
+    curr = dummy
+    for val in arr:
+        curr.next = ListNode(val)
+        curr = curr.next
+    return dummy.next
+
+def print_linked_list(head):
+    res = []
+    while head:
+        res.append(head.val)
+        head = head.next
+    print(json.dumps(res).replace(" ", ""))
+
+def parse_tree(arr_str):
+    if not arr_str: return None
+    arr = json.loads(arr_str)
+    if not arr: return None
+    root = TreeNode(arr[0])
+    q = deque([root])
+    i = 1
+    while q and i < len(arr):
+        node = q.popleft()
+        if i < len(arr) and arr[i] is not None:
+            node.left = TreeNode(arr[i])
+            q.append(node.left)
+        i += 1
+        if i < len(arr) and arr[i] is not None:
+            node.right = TreeNode(arr[i])
+            q.append(node.right)
+        i += 1
+    return root
+
+def print_tree(root):
+    if not root: 
+        print("[]")
+        return
+    res = []
+    q = deque([root])
+    while q:
+        node = q.popleft()
+        if node:
+            res.append(node.val)
+            q.append(node.left)
+            q.append(node.right)
+        else:
+            res.append(None)
+    while res and res[-1] is None:
+        res.pop()
+    print(json.dumps(res).replace(" ", ""))
 
 \${USER_CODE_PLACEHOLDER}
 
@@ -235,7 +381,7 @@ if __name__ == "__main__":
 ${inputParsing}
     sol = Solution()
     result = sol.${funcName}(${funcArgs.join(', ')})
-    ${returnType === 'boolean' ? "print('true' if result else 'false')" : 'print(result)'}`;
+    ${returnType === 'ListNode' ? 'print_linked_list(result)' : returnType === 'TreeNode' ? 'print_tree(result)' : returnType === 'boolean' ? "print('true' if result else 'false')" : 'print(result)'}`;
 }
 
 function generateJavaDriver(funcName, params, returnType) {
@@ -245,7 +391,11 @@ function generateJavaDriver(funcName, params, returnType) {
   for (const param of params) {
     const varName = param.name;
     
-    if (param.type === 'integer[]') {
+    if (param.type === 'ListNode') {
+      inputParsing += `        ListNode ${varName} = Helper.parseLinkedList(sc.nextLine().trim());\n`;
+    } else if (param.type === 'TreeNode') {
+      inputParsing += `        TreeNode ${varName} = Helper.parseTree(sc.nextLine().trim());\n`;
+    } else if (param.type === 'integer[]') {
       inputParsing += `        String[] ${varName}Str = sc.nextLine().replaceAll("[\\\\[\\\\]\\\\s]", "").split(",");
         int[] ${varName} = Arrays.stream(${varName}Str).filter(s -> !s.isEmpty()).mapToInt(Integer::parseInt).toArray();\n`;
     } else if (param.type === 'integer') {
@@ -261,6 +411,104 @@ function generateJavaDriver(funcName, params, returnType) {
   return `import java.util.*;
 import java.io.*;
 
+class ListNode {
+    int val;
+    ListNode next;
+    ListNode() {}
+    ListNode(int val) { this.val = val; }
+    ListNode(int val, ListNode next) { this.val = val; this.next = next; }
+}
+
+class TreeNode {
+    int val;
+    TreeNode left;
+    TreeNode right;
+    TreeNode() {}
+    TreeNode(int val) { this.val = val; }
+    TreeNode(int val, TreeNode left, TreeNode right) {
+        this.val = val;
+        this.left = left;
+        this.right = right;
+    }
+}
+
+class Helper {
+    public static ListNode parseLinkedList(String s) {
+        if(s == null || s.length() <= 2) return null;
+        String[] arr = s.substring(1, s.length() - 1).split(",");
+        ListNode dummy = new ListNode(0);
+        ListNode curr = dummy;
+        for(String item : arr) {
+            item = item.trim();
+            if(item.isEmpty()) continue;
+            curr.next = new ListNode(Integer.parseInt(item));
+            curr = curr.next;
+        }
+        return dummy.next;
+    }
+    
+    public static void printLinkedList(ListNode head) {
+        System.out.print("[");
+        while(head != null) {
+            System.out.print(head.val);
+            if(head.next != null) System.out.print(",");
+            head = head.next;
+        }
+        System.out.println("]");
+    }
+    
+    public static TreeNode parseTree(String s) {
+        if(s == null || s.length() <= 2) return null;
+        String[] arr = s.substring(1, s.length() - 1).split(",");
+        if(arr.length == 0 || arr[0].trim().equals("null")) return null;
+        TreeNode root = new TreeNode(Integer.parseInt(arr[0].trim()));
+        Queue<TreeNode> q = new LinkedList<>();
+        q.offer(root);
+        int i = 1;
+        while(!q.isEmpty() && i < arr.length) {
+            TreeNode node = q.poll();
+            String leftItem = arr[i++].trim();
+            if(!leftItem.equals("null")) {
+                node.left = new TreeNode(Integer.parseInt(leftItem));
+                q.offer(node.left);
+            }
+            if(i < arr.length) {
+                String rightItem = arr[i++].trim();
+                if(!rightItem.equals("null")) {
+                    node.right = new TreeNode(Integer.parseInt(rightItem));
+                    q.offer(node.right);
+                }
+            }
+        }
+        return root;
+    }
+    
+    public static void printTree(TreeNode root) {
+        if(root == null) { System.out.println("[]"); return; }
+        List<String> res = new ArrayList<>();
+        Queue<TreeNode> q = new LinkedList<>();
+        q.offer(root);
+        while(!q.isEmpty()) {
+            TreeNode node = q.poll();
+            if(node != null) {
+                res.add(String.valueOf(node.val));
+                q.offer(node.left);
+                q.offer(node.right);
+            } else {
+                res.add("null");
+            }
+        }
+        while(!res.isEmpty() && res.get(res.size() - 1).equals("null")) {
+            res.remove(res.size() - 1);
+        }
+        System.out.print("[");
+        for(int i=0; i<res.size(); i++) {
+            System.out.print(res.get(i) + (i == res.size()-1 ? "" : ","));
+        }
+        System.out.println("]");
+    }
+}
+
 \${USER_CODE_PLACEHOLDER}
 
 public class Main {
@@ -269,7 +517,7 @@ public class Main {
 ${inputParsing}
         Solution sol = new Solution();
         ${returnType !== 'void' ? `var result = sol.${funcName}(${funcArgs.join(', ')});` : `sol.${funcName}(${funcArgs.join(', ')});`}
-        ${returnType === 'integer[]' ? 'System.out.println(Arrays.toString(result));' : returnType === 'boolean' ? 'System.out.println(result ? "true" : "false");' : returnType !== 'void' ? 'System.out.println(result);' : ''}
+        ${returnType === 'ListNode' ? 'Helper.printLinkedList(result);' : returnType === 'TreeNode' ? 'Helper.printTree(result);' : returnType === 'integer[]' ? 'System.out.println(Arrays.toString(result));' : returnType === 'boolean' ? 'System.out.println(result ? "true" : "false");' : returnType !== 'void' ? 'System.out.println(result);' : ''}
     }
 }`;
 }
@@ -282,7 +530,11 @@ function generateJavaScriptDriver(funcName, params, returnType) {
     const param = params[i];
     const varName = param.name;
     
-    if (param.type.includes('[]')) {
+    if (param.type === 'ListNode') {
+      inputParsing += `    const ${varName} = parseLinkedList(JSON.parse(lines[${i}]));\n`;
+    } else if (param.type === 'TreeNode') {
+      inputParsing += `    const ${varName} = parseTree(JSON.parse(lines[${i}]));\n`;
+    } else if (param.type.includes('[]')) {
       inputParsing += `    const ${varName} = JSON.parse(lines[${i}]);\n`;
     } else if (param.type === 'integer' || param.type === 'long') {
       inputParsing += `    const ${varName} = parseInt(lines[${i}]);\n`;
@@ -298,6 +550,68 @@ function generateJavaScriptDriver(funcName, params, returnType) {
   
   return `const readline = require('readline');
 
+function ListNode(val, next) {
+    this.val = (val===undefined ? 0 : val)
+    this.next = (next===undefined ? null : next)
+}
+function TreeNode(val, left, right) {
+    this.val = (val===undefined ? 0 : val)
+    this.left = (left===undefined ? null : left)
+    this.right = (right===undefined ? null : right)
+}
+function parseLinkedList(arr) {
+    if (!arr || arr.length === 0) return null;
+    let dummy = new ListNode(0);
+    let curr = dummy;
+    for (let x of arr) {
+        curr.next = new ListNode(x);
+        curr = curr.next;
+    }
+    return dummy.next;
+}
+function printLinkedList(head) {
+    let res = [];
+    while (head) { res.push(head.val); head = head.next; }
+    console.log(JSON.stringify(res));
+}
+function parseTree(arr) {
+    if (!arr || arr.length === 0) return null;
+    let root = new TreeNode(arr[0]);
+    let q = [root];
+    let i = 1;
+    while (q.length > 0 && i < arr.length) {
+        let node = q.shift();
+        if (i < arr.length && arr[i] !== null) {
+            node.left = new TreeNode(arr[i]);
+            q.push(node.left);
+        }
+        i++;
+        if (i < arr.length && arr[i] !== null) {
+            node.right = new TreeNode(arr[i]);
+            q.push(node.right);
+        }
+        i++;
+    }
+    return root;
+}
+function printTree(root) {
+    if (!root) { console.log("[]"); return; }
+    let res = [];
+    let q = [root];
+    while (q.length > 0) {
+        let node = q.shift();
+        if (node) {
+            res.push(node.val);
+            q.push(node.left);
+            q.push(node.right);
+        } else {
+            res.push(null);
+        }
+    }
+    while (res.length > 0 && res[res.length - 1] === null) res.pop();
+    console.log(JSON.stringify(res));
+}
+
 \${USER_CODE_PLACEHOLDER}
 
 const rl = readline.createInterface({
@@ -311,7 +625,7 @@ rl.on('line', (line) => lines.push(line));
 rl.on('close', () => {
 ${inputParsing}
     const result = ${funcName}(${funcArgs.join(', ')});
-    ${returnType === 'boolean' ? "console.log(result ? 'true' : 'false');" : 'console.log(JSON.stringify(result));'}
+    ${returnType === 'ListNode' ? 'printLinkedList(result);' : returnType === 'TreeNode' ? 'printTree(result);' : returnType === 'boolean' ? "console.log(result ? 'true' : 'false');" : 'console.log(JSON.stringify(result));'}
 });`;
 }
 

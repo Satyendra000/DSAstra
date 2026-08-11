@@ -9,6 +9,9 @@ const Settings = () => {
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState("personal");
+  const [totalPoints, setTotalPoints] = useState(null);
+  const [totalSolved, setTotalSolved] = useState(null);
+  const [pointsHistory, setPointsHistory] = useState([]);
 
   /* ── Platform Handles State ── */
   const [handles, setHandles] = useState({ codeforces: "", leetcode: "", codechef: "" });
@@ -30,9 +33,10 @@ const Settings = () => {
         const res = await api.get("/api/users/stats", {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (res.data.platformHandles) {
-          setHandles(res.data.platformHandles);
-        }
+        if (res.data.platformHandles) setHandles(res.data.platformHandles);
+        if (res.data.points !== undefined) setTotalPoints(res.data.points);
+        if (res.data.solvedCount !== undefined) setTotalSolved(res.data.solvedCount);
+        if (res.data.pointsHistory) setPointsHistory(res.data.pointsHistory);
       } catch (err) {
         console.warn("Could not fetch handles:", err);
       }
@@ -78,6 +82,7 @@ const Settings = () => {
   const tabs = [
     { id: "personal", label: "Personal Info", icon: "person" },
     { id: "platform", label: "Platform Integrations", icon: "hub" },
+    { id: "points", label: "Points & Progress", icon: "stars" },
     { id: "preferences", label: "Preferences", icon: "tune", comingSoon: true },
   ];
 
@@ -174,7 +179,7 @@ const Settings = () => {
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
                       placeholder="Jane"
-                      className="w-full bg-black/40 border border-border rounded-xl px-4 py-2.5 text-[14px] text-white placeholder-text-tertiary focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all"
+                      className="w-full bg-bg-deep border border-border rounded-xl px-4 py-2.5 text-[14px] text-white placeholder-text-tertiary focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all"
                     />
                   </div>
                   {/* Last Name */}
@@ -185,7 +190,7 @@ const Settings = () => {
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value)}
                       placeholder="Doe"
-                      className="w-full bg-black/40 border border-border rounded-xl px-4 py-2.5 text-[14px] text-white placeholder-text-tertiary focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all"
+                      className="w-full bg-bg-deep border border-border rounded-xl px-4 py-2.5 text-[14px] text-white placeholder-text-tertiary focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all"
                     />
                   </div>
                 </div>
@@ -200,7 +205,7 @@ const Settings = () => {
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       placeholder="janedoe"
-                      className="w-full bg-black/40 border border-border rounded-xl pl-8 pr-4 py-2.5 text-[14px] text-white placeholder-text-tertiary focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all"
+                      className="w-full bg-bg-deep border border-border rounded-xl pl-8 pr-4 py-2.5 text-[14px] text-white placeholder-text-tertiary focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all"
                     />
                   </div>
                 </div>
@@ -217,19 +222,19 @@ const Settings = () => {
                   <p className="text-[11px] text-text-tertiary ml-1 mt-1">Email addresses must be managed directly through Clerk.</p>
                 </div>
 
-                <div className="pt-4 flex items-center justify-between border-t border-border">
-                  <span className={`text-[12px] ${personalMessage.includes("Failed") ? "text-rose" : "text-emerald"} transition-opacity duration-300 ${personalMessage ? "opacity-100" : "opacity-0"}`}>
-                    {personalMessage}
-                  </span>
-                  <button
-                    onClick={handleSavePersonal}
-                    disabled={savingPersonal}
-                    className="px-5 py-2 bg-gradient-to-r from-accent to-amber-500 hover:from-accent-hover hover:to-amber-400 text-black text-[13px] font-semibold rounded-lg shadow-[0_0_15px_rgba(226,179,64,0.15)] transition-all disabled:opacity-50 flex items-center gap-2"
-                  >
-                    {savingPersonal && <span className="material-symbols-outlined text-[16px] animate-spin">sync</span>}
-                    Save Changes
-                  </button>
-                </div>
+                  <div className="pt-4 flex items-center justify-between border-t border-border/50">
+                    <span className={`text-[12px] ${personalMessage.includes("Failed") ? "text-rose" : "text-emerald"} transition-opacity duration-300 ${personalMessage ? "opacity-100" : "opacity-0"}`}>
+                      {personalMessage}
+                    </span>
+                    <button
+                      onClick={handleSavePersonal}
+                      disabled={savingPersonal}
+                      className="px-5 py-2 bg-accent hover:bg-accent-hover text-white text-[13px] font-semibold rounded-lg transition-all disabled:opacity-50 flex items-center gap-2 active:scale-[0.98]"
+                    >
+                      {savingPersonal && <span className="material-symbols-outlined text-[16px] animate-spin">sync</span>}
+                      Save Changes
+                    </button>
+                  </div>
               </div>
             </div>
           )}
@@ -244,70 +249,70 @@ const Settings = () => {
 
               <div className="glass-card rounded-2xl overflow-hidden">
                 {/* Platform Item: LeetCode */}
-                <div className="p-6 border-b border-border flex flex-col md:flex-row md:items-center gap-6 md:gap-10">
-                  <div className="flex items-center gap-4 min-w-[180px]">
-                    <div className="size-10 rounded-[10px] flex items-center justify-center bg-amber-500/10 border border-amber-500/20">
-                      <span className="material-symbols-outlined text-amber-500">terminal</span>
+                <div className="p-6 border-b border-border/50 flex flex-col gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="size-8 rounded-[8px] flex items-center justify-center bg-amber-500/10 border border-amber-500/20">
+                      <span className="material-symbols-outlined text-amber-500 text-[16px]">terminal</span>
                     </div>
                     <div>
-                      <h3 className="text-[14px] font-medium text-white">LeetCode</h3>
-                      <p className="text-[11px] text-text-tertiary mt-0.5">Sync solved problems</p>
+                      <h3 className="text-[13px] font-medium text-white">LeetCode</h3>
+                      <p className="text-[11px] text-text-tertiary">Sync solved problems</p>
                     </div>
                   </div>
-                  <div className="flex-1 flex items-center relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary text-[14px] hidden md:block">leetcode.com/</span>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-text-tertiary text-[13px]">leetcode.com/</span>
                     <input
                       type="text"
                       value={handles.leetcode}
                       onChange={(e) => setHandles({ ...handles, leetcode: e.target.value })}
                       placeholder="username"
-                      className="w-full bg-black/40 border border-border rounded-xl md:pl-28 pl-4 pr-4 py-2.5 text-[14px] text-white placeholder-text-tertiary focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
+                      className="w-full bg-bg-deep border border-border rounded-xl pl-28 pr-4 py-2.5 text-[14px] text-white placeholder-text-tertiary focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
                     />
                   </div>
                 </div>
 
                 {/* Platform Item: Codeforces */}
-                <div className="p-6 border-b border-border flex flex-col md:flex-row md:items-center gap-6 md:gap-10">
-                  <div className="flex items-center gap-4 min-w-[180px]">
-                    <div className="size-10 rounded-[10px] flex items-center justify-center bg-blue-500/10 border border-blue-500/20">
-                      <span className="material-symbols-outlined text-blue-400">insights</span>
+                <div className="p-6 border-b border-border/50 flex flex-col gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="size-8 rounded-[8px] flex items-center justify-center bg-blue-500/10 border border-blue-500/20">
+                      <span className="material-symbols-outlined text-blue-400 text-[16px]">insights</span>
                     </div>
                     <div>
-                      <h3 className="text-[14px] font-medium text-white">Codeforces</h3>
-                      <p className="text-[11px] text-text-tertiary mt-0.5">Sync contest ratings</p>
+                      <h3 className="text-[13px] font-medium text-white">Codeforces</h3>
+                      <p className="text-[11px] text-text-tertiary">Sync contest ratings</p>
                     </div>
                   </div>
-                  <div className="flex-1 flex items-center relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary text-[14px] hidden md:block">codeforces.com/profile/</span>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-text-tertiary text-[13px]">codeforces.com/profile/</span>
                     <input
                       type="text"
                       value={handles.codeforces}
                       onChange={(e) => setHandles({ ...handles, codeforces: e.target.value })}
                       placeholder="handle"
-                      className="w-full bg-black/40 border border-border rounded-xl md:pl-[164px] pl-4 pr-4 py-2.5 text-[14px] text-white placeholder-text-tertiary focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all"
+                      className="w-full bg-bg-deep border border-border rounded-xl pl-[164px] pr-4 py-2.5 text-[14px] text-white placeholder-text-tertiary focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all"
                     />
                   </div>
                 </div>
 
                 {/* Platform Item: CodeChef */}
-                <div className="p-6 flex flex-col md:flex-row md:items-center gap-6 md:gap-10">
-                  <div className="flex items-center gap-4 min-w-[180px]">
-                    <div className="size-10 rounded-[10px] flex items-center justify-center bg-orange-500/10 border border-orange-500/20">
-                      <span className="material-symbols-outlined text-orange-400">code_blocks</span>
+                <div className="p-6 flex flex-col gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="size-8 rounded-[8px] flex items-center justify-center bg-orange-500/10 border border-orange-500/20">
+                      <span className="material-symbols-outlined text-orange-400 text-[16px]">code_blocks</span>
                     </div>
                     <div>
-                      <h3 className="text-[14px] font-medium text-white">CodeChef</h3>
-                      <p className="text-[11px] text-text-tertiary mt-0.5">Sync star ratings</p>
+                      <h3 className="text-[13px] font-medium text-white">CodeChef</h3>
+                      <p className="text-[11px] text-text-tertiary">Sync star ratings</p>
                     </div>
                   </div>
-                  <div className="flex-1 flex items-center relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary text-[14px] hidden md:block">codechef.com/users/</span>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-text-tertiary text-[13px]">codechef.com/users/</span>
                     <input
                       type="text"
                       value={handles.codechef}
                       onChange={(e) => setHandles({ ...handles, codechef: e.target.value })}
                       placeholder="username"
-                      className="w-full bg-black/40 border border-border rounded-xl md:pl-[140px] pl-4 pr-4 py-2.5 text-[14px] text-white placeholder-text-tertiary focus:outline-none focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/20 transition-all"
+                      className="w-full bg-bg-deep border border-border rounded-xl pl-[140px] pr-4 py-2.5 text-[14px] text-white placeholder-text-tertiary focus:outline-none focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/20 transition-all"
                     />
                   </div>
                 </div>
@@ -325,6 +330,73 @@ const Settings = () => {
                   {savingHandles && <span className="material-symbols-outlined text-[16px] animate-spin">sync</span>}
                   Save Connections
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* Section: Points & Progress */}
+          {activeTab === "points" && (
+            <div className="space-y-6 animate-fade-in-up">
+              <div>
+                <h1 className="text-2xl font-semibold text-white tracking-tight">Points</h1>
+                <p className="text-[13px] text-text-tertiary mt-1">Your earned points across all solved problems.</p>
+              </div>
+
+              {/* Total Points — coin style */}
+              <div className="rounded-2xl bg-amber-500/[0.07] border border-amber-500/20 p-6 flex items-center gap-5">
+                <div className="size-14 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined text-amber-400 text-[28px]">toll</span>
+                </div>
+                <div>
+                  <p className="text-[11px] font-medium text-amber-400/70 uppercase tracking-widest mb-0.5">Total Points</p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-5xl font-bold text-amber-400 tabular-nums tracking-tight">
+                      {totalPoints !== null ? totalPoints.toLocaleString() : "—"}
+                    </span>
+                    <span className="text-[13px] text-amber-400/50 font-medium">pts</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* History */}
+              <div>
+                <h2 className="text-[11px] font-semibold text-text-tertiary uppercase tracking-widest mb-4">Solve History</h2>
+                {pointsHistory.length === 0 ? (
+                  <div className="py-12 text-center text-[13px] text-text-tertiary">
+                    Solve problems to see your history here.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {pointsHistory.map((entry, i) => (
+                      <div key={i} className="flex items-center justify-between px-4 py-3 rounded-xl bg-white/[0.025] border border-white/[0.06] hover:bg-white/[0.04] transition-colors">
+                        <div className="flex flex-col gap-1 min-w-0">
+                          <span className="text-[13px] text-zinc-200 font-medium truncate">
+                            {entry.title || "Problem Solved"}
+                          </span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] text-zinc-500">
+                              {entry.platform}
+                            </span>
+                            <span className="text-zinc-700 text-[10px]">·</span>
+                            <span className="text-[10px] text-zinc-600">
+                              {new Date(entry.solvedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                            </span>
+                            {entry.focusMode && (
+                              <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-blue-400/80 bg-blue-500/10 border border-blue-500/15 px-1.5 py-[2px] rounded-md uppercase tracking-wide">
+                                <span className="material-symbols-outlined text-[10px]">center_focus_strong</span>
+                                Focus
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0 ml-4">
+                          <span className="material-symbols-outlined text-amber-400/70 text-[14px]">toll</span>
+                          <span className="text-[14px] font-bold text-amber-400">+{entry.pointsEarned}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}

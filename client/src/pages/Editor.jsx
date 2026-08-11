@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useUser, UserButton } from "@clerk/clerk-react";
 import api from "../services/api";
+import { marked } from "marked";
 
 /* ─── Constants ─────────────────────────────────────────────── */
 const LANG_MAP = {
@@ -163,6 +164,7 @@ const PROBLEM_CSS = `
   .problem-html .section-title { color: #ededef; font-weight: 600; font-size: 14px; margin-top: 1.2em; margin-bottom: 0.4em; text-transform: capitalize; }
   .problem-html .note { background: #0f1624; border-left: 3px solid #60a5fa; padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 0.75em 0; }
   .problem-html .note p:first-child { margin-top: 0; }
+  .problem-html .note p:last-child { margin-bottom: 0; }
   .problem-html .MathJax { color: #e4e4e7 !important; }
 
   /* ─── Shimmer Animation ─── */
@@ -233,7 +235,9 @@ export default function EditorPage() {
   const [loading, setLoading] = useState(true);
   const [language, setLanguage] = useState("cpp");
   const [code, setCode] = useState(LANG_MAP.cpp.template);
-  const [input, setInput] = useState("");
+  const [testCases, setTestCases] = useState([{ id: 1, input: "" }]);
+  const [activeTestCaseId, setActiveTestCaseId] = useState(1);
+  const [testResults, setTestResults] = useState({});
   const [execResult, setExecResult] = useState(null);
   const [execInfo, setExecInfo] = useState(null);
   const [running, setRunning] = useState(false);
@@ -243,6 +247,44 @@ export default function EditorPage() {
   const [submissions, setSubmissions] = useState([]);
   const [loadingSubmissions, setLoadingSubmissions] = useState(false);
   const [hasLoadedPastCode, setHasLoadedPastCode] = useState(false);
+
+  /* ─── Restored Features State ──────────────── */
+  const [showTags, setShowTags] = useState(false);
+
+  /* ─── Gamification Focus Mode ──────────────── */
+  const [focusModeEnabled, setFocusModeEnabled] = useState(false);
+  const [focusTimeElapsed, setFocusTimeElapsed] = useState(0); // in seconds
+  const [hasOpenedHint, setHasOpenedHint] = useState(false);
+  const [showFocusModal, setShowFocusModal] = useState(false);
+  // Unlock 1 hint every 18 minutes (1080 seconds)
+  const unlockedHintsCount = Math.floor(focusTimeElapsed / 1080);
+
+  const [conceptGuide, setConceptGuide] = useState(null);
+  const [fetchingGuide, setFetchingGuide] = useState(false);
+  const [hasFetchedGuide, setHasFetchedGuide] = useState(false);
+  const [generatingHints, setGeneratingHints] = useState(false);
+  const [personalizedHint, setPersonalizedHint] = useState(null);
+  const [generatingPersonalized, setGeneratingPersonalized] = useState(false);
+  const [initializingEngine, setInitializingEngine] = useState(false);
+
+  const initializeEngine = async () => {
+    try {
+      setInitializingEngine(true);
+      const fetchId = problem._id || problem.problemId || id;
+      await api.post(`/api/problems/${fetchId}/generate-engine`);
+      
+      // Fetch the completely updated problem
+      const updatedRes = await api.get(`/api/problems/${fetchId}`);
+      if (updatedRes.data) {
+        setProblem(updatedRes.data);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to initialize execution engine.");
+    } finally {
+      setInitializingEngine(false);
+    }
+  };
 
   /* ─── Panel sizing ───────────────────────── */
   const [leftW, onDragLeft] = useDraggable(440, 280, 700, "horizontal");
@@ -326,8 +368,8 @@ export default function EditorPage() {
         const doc = parser.parseFromString(problem.description, "text/html");
         const results = [];
 
-        // 1. LeetCode style: <pre>Input: ... Output: ...</pre>
-        const pres = doc.querySelectorAll("pre");
+        // 1. LeetCode style: <pre>Input: ... Output: ...</pre> or <div class="example-block">
+        const pres = doc.querySelectorAll("pre, .example-block");
         pres.forEach((pre) => {
           const text = pre.textContent || "";
           if (text.includes("Input:") && text.includes("Output:")) {
@@ -404,12 +446,34 @@ export default function EditorPage() {
     return [];
   }, [problem?.examples, problem?.description]);
 
+  // Initialize test cases from parsed examples
+  useEffect(() => {
+    if (parsedExamples && parsedExamples.length > 0) {
+      setTestCases(
+        parsedExamples.map((ex, i) => ({
+          id: i + 1,
+          input: ex.input,
+          expectedOutput: ex.output,
+        }))
+      );
+      setActiveTestCaseId(1);
+    } else {
+      setTestCases([{ id: 1, input: "" }]);
+      setActiveTestCaseId(1);
+    }
+  }, [parsedExamples]);
+
   /* ─── Fetch ──────────────────────────────── */
   useEffect(() => {
     if (!id) {
       setLoading(false);
       return;
     }
+    setHasFetchedGuide(false);
+    setConceptGuide(null);
+    setPersonalizedHint(null);
+    setShowTags(false);
+    
     (async () => {
       try {
         const res = await api.get(`/api/problems/${id}`);
@@ -445,70 +509,121 @@ export default function EditorPage() {
     }
     try {
       setRunning(true);
+      setTestResults({});
       setExecResult(null);
       setExecInfo(null);
       setActiveTab("output");
-      const r = await api.post("/api/execute", {
-        code,
-        input,
-        language,
-        problemId: problem?._id || problem?.problemId || id,
+
+      const promises = testCases.map(async (tc) => {
+        try {
+          const needsExpected = !tc.expectedOutput;
+          const r = await api.post("/api/execute", {
+            code,
+            input: tc.input,
+            language,
+            problemId: problem?._id || problem?.problemId || id,
+            generateExpected: needsExpected
+          });
+          
+          const {
+            stdout,
+            stderr,
+            compile_output,
+            message,
+            status,
+            status_id,
+            time,
+            memory,
+            expectedOutput: dynExpectedOutput
+          } = r.data;
+
+          const decodedStdout = (stdout || "").trim();
+          let resObj = {};
+
+          if (status_id === 6) {
+            resObj = {
+              type: "compile_error",
+              title: "Compilation Error",
+              body: compile_output || message || "Unknown compilation error",
+            };
+          } else if (status_id === 5) {
+            resObj = {
+              type: "tle",
+              title: "Time Limit Exceeded",
+              body: stderr || message || "Your code took too long to execute.",
+            };
+          } else if (status_id >= 7 && status_id <= 12) {
+            resObj = {
+              type: "runtime_error",
+              title: `Runtime Error (${status || "NZEC"})`,
+              body: stderr || message || "A runtime error occurred.",
+            };
+          } else if (status_id === 3) {
+            const finalExpected = tc.expectedOutput || dynExpectedOutput;
+            let type = "success";
+            
+            if (finalExpected) {
+              const normalize = (s) => {
+                let norm = (s || "").replace(/\r\n/g, "\n").trim().split("\n").map(l => l.trim()).join("\n");
+                if (norm.startsWith('"') && norm.endsWith('"')) {
+                  norm = norm.slice(1, -1);
+                }
+                return norm;
+              };
+              if (normalize(decodedStdout) === normalize(finalExpected)) {
+                type = "success";
+              } else {
+                type = "wrong_answer";
+              }
+            } else {
+              type = "executed";
+            }
+            
+            resObj = {
+              type,
+              title: type === "success" ? "Accepted" : type === "executed" ? "Executed" : "Wrong Answer",
+              body: decodedStdout || "(no output)",
+              expectedOutput: finalExpected
+            };
+          } else {
+            resObj = {
+              type: "error",
+              title: status || "Error",
+              body: stderr || compile_output || message || "An unknown error occurred.",
+            };
+          }
+          return { id: tc.id, result: resObj, info: { time, memory, status_id, status } };
+        } catch (err) {
+          const d = err.response?.data?.detail || err.response?.data?.error || err.message;
+          return {
+            id: tc.id,
+            result: {
+              type: "error",
+              title: "Network Error",
+              body: typeof d === "string" ? d : JSON.stringify(d, null, 2),
+            },
+          };
+        }
       });
-      const {
-        stdout,
-        stderr,
-        compile_output,
-        message,
-        status,
-        status_id,
-        time,
-        memory,
-      } = r.data;
 
-      setExecInfo({ status, time, memory, status_id });
+      const resultsArray = await Promise.all(promises);
+      const newResults = {};
+      resultsArray.forEach((r) => {
+        newResults[r.id] = r.result;
+      });
+      setTestResults(newResults);
 
-      // Judge0 status_id: 3=Accepted, 5=TLE, 6=CE, 7-12=RE
-      if (status_id === 6) {
-        setExecResult({
-          type: "compile_error",
-          title: "Compilation Error",
-          body: compile_output || message || "Unknown compilation error",
-        });
-      } else if (status_id === 5) {
-        setExecResult({
-          type: "tle",
-          title: "Time Limit Exceeded",
-          body: stderr || message || "Your code took too long to execute.",
-        });
-      } else if (status_id >= 7 && status_id <= 12) {
-        setExecResult({
-          type: "runtime_error",
-          title: `Runtime Error (${status || "NZEC"})`,
-          body: stderr || message || "A runtime error occurred.",
-        });
-      } else if (status_id === 3) {
-        setExecResult({
-          type: "success",
-          title: "Accepted",
-          body: stdout || "(no output)",
-        });
-      } else {
-        // Other statuses (internal error, etc.)
-        setExecResult({
-          type: "error",
-          title: status || "Error",
-          body:
-            stderr || compile_output || message || "An unknown error occurred.",
+      // We can set global execInfo based on the first testcase for now (or a summary)
+      if (resultsArray.length > 0 && resultsArray[0].info) {
+        setExecInfo({
+          status: resultsArray.some(r => r.result.type !== "success" && r.result.type !== "executed") ? "Failed" : "Accepted",
+          time: resultsArray[0].info.time,
+          memory: resultsArray[0].info.memory,
         });
       }
+
     } catch (err) {
-      const d =
-        err.response?.data?.detail || err.response?.data?.error || err.message;
-      setExecResult({
-        type: "error",
-        title: "Network Error",
-        body: typeof d === "string" ? d : JSON.stringify(d, null, 2),
-      });
+      console.error(err);
     } finally {
       setRunning(false);
     }
@@ -522,6 +637,7 @@ export default function EditorPage() {
     try {
       setSubmitting(true);
       setExecResult(null);
+      setTestResults({});
       setExecInfo(null);
       setActiveTab("output");
       const r = await api.post("/api/submissions", {
@@ -529,6 +645,8 @@ export default function EditorPage() {
         language,
         problemId: problem._id || problem.problemId || id,
         testCases: parsedExamples,
+        focusModeEnabled,
+        hasOpenedHint,
       });
       const {
         status,
@@ -598,6 +716,39 @@ export default function EditorPage() {
     }
   };
 
+  /* ─── Restored Features API Calls ────────── */
+
+
+  const generateGlobalHints = async () => {
+    if (!problem) return;
+    setGeneratingHints(true);
+    try {
+      const res = await api.get(`/api/problems/${problem._id || problem.problemId || id}/global-hints`);
+      setProblem(p => ({ ...p, hints: res.data.hints }));
+    } catch (err) {
+      console.error("Failed to generate global hints:", err);
+    } finally {
+      setGeneratingHints(false);
+    }
+  };
+
+  const generatePersonalizedHint = async () => {
+    if (!problem || !code) return;
+    setGeneratingPersonalized(true);
+    try {
+      const res = await api.post(`/api/problems/${problem._id || problem.problemId || id}/personalized-hint`, { 
+        code, 
+        language 
+      });
+      setPersonalizedHint(res.data.hint);
+    } catch (err) {
+      console.error("Failed to get personalized hint:", err);
+      setPersonalizedHint("Sorry, failed to generate hint.");
+    } finally {
+      setGeneratingPersonalized(false);
+    }
+  };
+
   /* ─── Timer ──────────────────────────────── */
   const [elapsed, setElapsed] = useState(0);
   const [timerOn, setTimerOn] = useState(false);
@@ -606,6 +757,13 @@ export default function EditorPage() {
     const id = setInterval(() => setElapsed((p) => p + 1), 1000);
     return () => clearInterval(id);
   }, [timerOn]);
+
+  useEffect(() => {
+    if (!focusModeEnabled) return;
+    const id = setInterval(() => setFocusTimeElapsed((p) => p + 1), 1000);
+    return () => clearInterval(id);
+  }, [focusModeEnabled]);
+
   const fmtTime = (s) =>
     `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
@@ -622,19 +780,21 @@ export default function EditorPage() {
       {/* ═══ TOOLBAR ═══════════════════════════════════════════ */}
       <div className="h-12 bg-bg-elevated border-b border-border flex items-center px-3 gap-2 shrink-0">
         {/* Left cluster */}
-        <Link
-          to="/problems"
-          className="flex items-center gap-1 text-text-secondary hover:text-text-primary transition-colors duration-200 px-2 py-1 rounded-lg hover:bg-white/[0.04]"
-        >
-          <span className="material-symbols-outlined text-[16px]">
-            chevron_left
-          </span>
-          <span className="text-[12px] font-medium hidden sm:inline">
-            Problem List
-          </span>
-        </Link>
+        {!focusModeEnabled && (
+          <Link
+            to="/problems"
+            className="flex items-center gap-1 text-text-secondary hover:text-text-primary transition-colors duration-200 px-2 py-1 rounded-lg hover:bg-white/[0.04]"
+          >
+            <span className="material-symbols-outlined text-[16px]">
+              chevron_left
+            </span>
+            <span className="text-[12px] font-medium hidden sm:inline">
+              Problem List
+            </span>
+          </Link>
+        )}
 
-        <div className="w-px h-5 bg-border" />
+        {!focusModeEnabled && <div className="w-px h-5 bg-border mx-1" />}
 
         {problem && (
           <div className="flex items-center gap-2 min-w-0">
@@ -702,51 +862,88 @@ export default function EditorPage() {
           ))}
         </select>
 
-        {/* Run */}
+        {/* Focus Mode Button */}
         <button
-          onClick={runCode}
-          disabled={running || submitting}
-          className="flex items-center gap-1.5 bg-bg-hover hover:bg-bg-active active:bg-white/[0.1] disabled:opacity-40 text-text-secondary text-[11px] font-semibold px-3.5 py-1.5 rounded-xl border border-border transition-all duration-200"
+          onClick={() => {
+            if (focusModeEnabled) {
+              setFocusModeEnabled(false);
+              setFocusTimeElapsed(0);
+            } else {
+              setShowFocusModal(true);
+            }
+          }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold transition-all duration-200 shadow-sm border ${
+            focusModeEnabled 
+              ? 'bg-rose-500 text-white border-rose-500 shadow-rose-500/20 hover:bg-rose-600' 
+              : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20'
+          }`}
         >
-          {running ? (
-            <>
-              <span className="material-symbols-outlined text-[14px] animate-spin">
-                progress_activity
-              </span>
-              Running
-            </>
-          ) : (
-            <>
-              <span className="material-symbols-outlined text-[14px]">
-                play_arrow
-              </span>
-              Run
-            </>
-          )}
+          <span className="material-symbols-outlined text-[14px]">
+            {focusModeEnabled ? 'close_fullscreen' : 'center_focus_strong'}
+          </span>
+          {focusModeEnabled ? 'Exit Focus Mode' : 'Focus Mode'}
         </button>
 
-        {/* Submit */}
-        <button
-          onClick={submitCode}
-          disabled={running || submitting}
-          className="flex items-center gap-1.5 bg-emerald/90 hover:bg-emerald active:bg-emerald/80 disabled:opacity-40 text-black text-[11px] font-semibold px-3.5 py-1.5 rounded-xl transition-all duration-200 shadow-sm shadow-emerald/20"
-        >
-          {submitting ? (
-            <>
-              <span className="material-symbols-outlined text-[14px] animate-spin">
-                progress_activity
-              </span>
-              Submitting
-            </>
-          ) : (
-            <>
-              <span className="material-symbols-outlined text-[14px]">
-                cloud_upload
-              </span>
-              Submit
-            </>
-          )}
-        </button>
+        {problem?.platform === 'LeetCode' && (!problem.driverCode || !problem.driverCode.cpp) ? (
+          <button
+            onClick={initializeEngine}
+            disabled={initializingEngine}
+            className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-500 active:bg-purple-700 disabled:opacity-40 text-white text-[11px] font-semibold px-3.5 py-1.5 rounded-xl transition-all duration-200 shadow-sm shadow-purple-500/20"
+          >
+            <span className={`material-symbols-outlined text-[14px] ${initializingEngine ? 'animate-spin' : ''}`}>
+              {initializingEngine ? 'sync' : 'smart_toy'}
+            </span>
+            {initializingEngine ? 'Initializing...' : 'Initialize Engine'}
+          </button>
+        ) : (
+          <>
+            {/* Run */}
+            <button
+              onClick={runCode}
+              disabled={running || submitting}
+              className="flex items-center gap-1.5 bg-bg-hover hover:bg-bg-active active:bg-white/[0.1] disabled:opacity-40 text-text-secondary text-[11px] font-semibold px-3.5 py-1.5 rounded-xl border border-border transition-all duration-200"
+            >
+              {running ? (
+                <>
+                  <span className="material-symbols-outlined text-[14px] animate-spin">
+                    progress_activity
+                  </span>
+                  Running
+                </>
+              ) : (
+                <>
+                  <span className="material-symbols-outlined text-[14px]">
+                    play_arrow
+                  </span>
+                  Run
+                </>
+              )}
+            </button>
+
+            {/* Submit */}
+            <button
+              onClick={submitCode}
+              disabled={running || submitting}
+              className="flex items-center gap-1.5 bg-emerald/90 hover:bg-emerald active:bg-emerald/80 disabled:opacity-40 text-black text-[11px] font-semibold px-3.5 py-1.5 rounded-xl transition-all duration-200 shadow-sm shadow-emerald/20"
+            >
+              {submitting ? (
+                <>
+                  <span className="material-symbols-outlined text-[14px] animate-spin">
+                    progress_activity
+                  </span>
+                  Submitting
+                </>
+              ) : (
+                <>
+                  <span className="material-symbols-outlined text-[14px]">
+                    cloud_upload
+                  </span>
+                  Submit
+                </>
+              )}
+            </button>
+          </>
+        )}
 
         {/* Open Original */}
         {problem?.url && (
@@ -927,18 +1124,7 @@ export default function EditorPage() {
                           </span>
                         )}
                       </div>
-                      {problem.tags?.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 mt-3">
-                          {problem.tags.map((t, i) => (
-                            <span
-                              key={i}
-                              className="text-[10px] font-medium px-2 py-[2px] rounded-full bg-blue-500/8 border border-blue-500/15 text-blue-400/90"
-                            >
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      )}
+
                     </div>
 
                     <div className="border-t border-[#1e1e21]" />
@@ -970,79 +1156,162 @@ export default function EditorPage() {
                       </div>
                     )}
 
-                    {/* Examples */}
-                    {parsedExamples.length > 0 && (
-                      <div className="space-y-3 mt-2">
-                        <h3 className="text-[13px] font-semibold text-zinc-200 flex items-center gap-1.5">
-                          <span className="material-symbols-outlined text-[15px] text-emerald-500">
-                            science
-                          </span>
-                          Examples
-                        </h3>
-                        {parsedExamples.map((ex, i) => (
-                          <div
-                            key={i}
-                            className="rounded-lg overflow-hidden border border-[#1e1e21] bg-[#111113]"
-                          >
-                            <div className="border-b border-[#1e1e21]">
-                              <div className="flex items-center justify-between px-3 py-1.5">
-                                <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
-                                  Input
-                                  {parsedExamples.length > 1 ? ` ${i + 1}` : ""}
-                                </span>
-                                <button
-                                  onClick={() => {
-                                    setInput(ex.input);
-                                    setActiveTab("input");
-                                  }}
-                                  className="text-[10px] text-emerald-500 hover:text-emerald-400 transition-colors flex items-center gap-1 font-medium"
-                                >
-                                  <span className="material-symbols-outlined text-[12px]">
-                                    content_copy
-                                  </span>
-                                  Use
-                                </button>
-                              </div>
-                              <pre className="px-3 py-2 text-[12px] font-mono text-zinc-300 bg-[#0a0a0b] whitespace-pre overflow-x-auto m-0 border-t border-[#1e1e21]">
-                                {ex.input}
-                              </pre>
-                            </div>
-                            <div>
-                              <div className="px-3 py-1.5">
-                                <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
-                                  Output
-                                </span>
-                              </div>
-                              <pre className="px-3 py-2 text-[12px] font-mono text-emerald-400/90 bg-[#0a0a0b] whitespace-pre overflow-x-auto m-0 border-t border-[#1e1e21]">
-                                {ex.output}
-                              </pre>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
                     {/* Hints */}
-                    {problem.hints?.length > 0 && (
-                      <details className="mt-3 group">
-                        <summary className="text-[12px] font-medium text-zinc-500 cursor-pointer hover:text-white transition-colors flex items-center gap-1.5 select-none">
-                          <span className="material-symbols-outlined text-[14px] text-amber-500 group-open:rotate-12 transition-transform">
-                            lightbulb
+                    {/* Dual Hint System */}
+                    {/* ─── BOTTOM SECTIONS (Hints, Code Analysis, Related Topics) ─── */}
+                    <div className="mt-8 pt-6 border-t border-[#1e1e21] space-y-6">
+                      
+                      {/* 1. Global Hints */}
+                      <div className="bg-[#111113]/50 border border-white/[0.02] rounded-xl p-4 transition-all hover:bg-[#111113]/80">
+                        <h3 className="text-[13px] font-semibold text-zinc-200 flex items-center gap-2 mb-4">
+                          <div className="w-6 h-6 rounded-md bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
+                            <span className="material-symbols-outlined text-[14px] text-amber-500">lightbulb</span>
+                          </div>
+                          Problem Hints
+                        </h3>
+                        {problem.hints?.length > 0 ? (
+                          <div className="space-y-2">
+                            {problem.hints.map((h, i) => {
+                              const isLocked = focusModeEnabled && i >= unlockedHintsCount;
+                              return (
+                                <details 
+                                  key={i} 
+                                  className={`group bg-[#0a0a0b] border border-white/[0.05] rounded-lg overflow-hidden transition-all ${isLocked ? 'opacity-50 cursor-not-allowed' : 'hover:border-white/[0.1]'}`}
+                                  onToggle={(e) => {
+                                    if (e.target.open) {
+                                      if (isLocked) {
+                                        e.preventDefault();
+                                        e.target.open = false;
+                                        // They tried to peek, maybe show a small toast?
+                                        return;
+                                      }
+                                      setHasOpenedHint(true);
+                                    }
+                                  }}
+                                >
+                                  <summary className={`text-[12px] font-medium text-zinc-400 flex items-center gap-2 px-3 py-2.5 select-none outline-none ${isLocked ? 'cursor-not-allowed' : 'cursor-pointer hover:text-zinc-200 transition-colors'}`}>
+                                    <span className="material-symbols-outlined text-[16px] transition-transform duration-300 group-open:rotate-90">
+                                      {isLocked ? 'lock' : 'arrow_right'}
+                                    </span>
+                                    Hint {i + 1}
+                                    {isLocked && <span className="text-[9px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full ml-auto">Locked ({18 - Math.floor((focusTimeElapsed % 1080) / 60)}m left)</span>}
+                                  </summary>
+                                  <div className="px-4 py-3 text-[12px] border-t border-white/[0.05] text-zinc-300 leading-relaxed problem-html bg-white/[0.02]" dangerouslySetInnerHTML={{ __html: h }} />
+                                </details>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <button
+                            onClick={generateGlobalHints}
+                            disabled={generatingHints}
+                            className="w-full flex items-center justify-center gap-2 text-[12px] font-medium bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 hover:shadow-[0_0_15px_rgba(245,158,11,0.1)] border border-amber-500/20 px-4 py-2.5 rounded-lg transition-all duration-300 disabled:opacity-50"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">{generatingHints ? 'sync' : 'auto_awesome'}</span>
+                            {generatingHints ? 'Generating Insights...' : 'Reveal Hints'}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* 2. Personalized Code Analysis */}
+                      <div className="bg-[#111113]/50 border border-white/[0.02] rounded-xl p-4 transition-all hover:bg-[#111113]/80">
+                        <h3 className="text-[13px] font-semibold text-zinc-200 flex items-center gap-2 mb-2">
+                          <div className="w-6 h-6 rounded-md bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
+                            <span className="material-symbols-outlined text-[14px] text-blue-400">psychology</span>
+                          </div>
+                          Code Analysis
+                        </h3>
+                        <p className="text-[12px] text-zinc-500 mb-4 ml-8 leading-relaxed">Stuck? Get a personalized, conceptual hint based on your current code architecture.</p>
+                        <button
+                          onClick={generatePersonalizedHint}
+                          disabled={generatingPersonalized || !code}
+                          className="ml-8 flex items-center justify-center gap-2 text-[12px] font-medium bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 hover:shadow-[0_0_15px_rgba(59,130,246,0.1)] border border-blue-500/20 px-4 py-2 rounded-lg transition-all duration-300 disabled:opacity-50"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">{generatingPersonalized ? 'sync' : 'troubleshoot'}</span>
+                          {generatingPersonalized ? 'Analyzing Your Code...' : 'Analyze My Code'}
+                        </button>
+                        
+                        {personalizedHint && (
+                          <div className="mt-4 ml-8 p-4 bg-[#0a0a0b] border border-blue-500/20 rounded-lg shadow-sm">
+                            <div className="problem-html text-[13px] text-zinc-300 leading-relaxed" dangerouslySetInnerHTML={{ __html: marked.parse(personalizedHint) }} />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 3. Related Topics (Wrapper for Tags & AI Guide) */}
+                      <details 
+                        className="group bg-[#111113]/50 border border-white/[0.02] rounded-xl overflow-hidden transition-all hover:bg-[#111113]/80"
+                        onToggle={(e) => {
+                          if (e.target.open && !hasFetchedGuide) {
+                            setHasFetchedGuide(true);
+                            setFetchingGuide(true);
+                            api.get(`/api/problems/${problem._id || problem.problemId || id}/concept-guide`)
+                              .then(res => setConceptGuide(res.data.guide))
+                              .catch(err => console.error("Failed to fetch guide:", err))
+                              .finally(() => setFetchingGuide(false));
+                          }
+                        }}
+                      >
+                        <summary className="text-[13px] font-semibold text-zinc-200 cursor-pointer hover:text-white transition-colors flex items-center gap-2 p-4 select-none outline-none">
+                          <span className="material-symbols-outlined text-[18px] text-zinc-500 group-open:rotate-90 transition-transform duration-300">
+                            arrow_right
                           </span>
-                          {problem.hints.length} Hint
-                          {problem.hints.length > 1 ? "s" : ""} available
+                          <div className="w-6 h-6 rounded-md bg-purple-500/10 flex items-center justify-center border border-purple-500/20">
+                            <span className="material-symbols-outlined text-[14px] text-purple-400">
+                              hub
+                            </span>
+                          </div>
+                          Related Topics & Guide
                         </summary>
-                        <div className="mt-2 space-y-2">
-                          {problem.hints.map((h, i) => (
-                            <div
-                              key={i}
-                              className="problem-html text-[12px] p-3 bg-[#111113] border border-[#1e1e21] rounded-lg text-zinc-400"
-                              dangerouslySetInnerHTML={{ __html: h }}
-                            />
-                          ))}
+                        
+                        <div className="px-4 pb-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                          {/* Tags Section */}
+                          {problem.tags?.length > 0 && (
+                            <details className="group/tags bg-[#0a0a0b] border border-white/[0.05] rounded-lg overflow-hidden" open>
+                              <summary className="text-[12px] font-medium text-zinc-400 cursor-pointer hover:text-zinc-200 hover:bg-white/[0.02] transition-colors flex items-center gap-2 px-3 py-2.5 select-none uppercase tracking-wider outline-none">
+                                <span className="material-symbols-outlined text-[16px] transition-transform duration-300 group-open/tags:rotate-90">arrow_right</span>
+                                Problem Tags
+                              </summary>
+                              <div className="flex flex-wrap gap-2 px-4 pb-4 animate-in fade-in slide-in-from-top-1 duration-200">
+                                {problem.tags.map((t, i) => (
+                                  <span
+                                    key={i}
+                                    className="text-[11.5px] font-medium px-3 py-1.5 rounded-md bg-white/[0.03] border border-white/[0.05] text-zinc-300 hover:bg-white/[0.06] transition-colors"
+                                  >
+                                    {t}
+                                  </span>
+                                ))}
+                              </div>
+                            </details>
+                          )}
+
+                          {/* AI Study & Guide Section */}
+                          <details className="group/guide bg-[#0a0a0b] border border-white/[0.05] rounded-lg overflow-hidden" open>
+                            <summary className="text-[12px] font-medium text-zinc-400 cursor-pointer hover:text-zinc-200 hover:bg-white/[0.02] transition-colors flex items-center gap-2 px-3 py-2.5 select-none uppercase tracking-wider outline-none">
+                              <span className="material-symbols-outlined text-[16px] transition-transform duration-300 group-open/guide:rotate-90">arrow_right</span>
+                              <span className="material-symbols-outlined text-[14px] text-purple-400">menu_book</span>
+                              AI Concept Guide
+                            </summary>
+                            <div className="px-4 pb-4 border-t border-white/[0.02] pt-3 animate-in fade-in slide-in-from-top-1 duration-200 bg-white/[0.01]">
+                              {fetchingGuide ? (
+                                <div className="space-y-4 animate-pulse">
+                                  <div className="h-4 w-1/3 shimmer-bg rounded-md" />
+                                  <div className="h-3 w-full shimmer-bg rounded-md" />
+                                  <div className="h-3 w-5/6 shimmer-bg rounded-md" />
+                                  <div className="h-24 w-full shimmer-bg rounded-xl mt-4" />
+                                </div>
+                              ) : conceptGuide ? (
+                                <div className="problem-html text-[13px] text-zinc-300 leading-relaxed" dangerouslySetInnerHTML={{ __html: marked.parse(conceptGuide) }} />
+                              ) : (
+                                <p className="text-zinc-500 text-[12px] italic">Study guide is currently unavailable for this problem.</p>
+                              )}
+                            </div>
+                          </details>
                         </div>
                       </details>
-                    )}
+                    </div>
+
+
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -1056,6 +1325,8 @@ export default function EditorPage() {
                 )}
               </div>
             </div>
+
+
 
             {/* Editorial tab — always in DOM, hidden when inactive */}
             <div
@@ -1137,25 +1408,17 @@ export default function EditorPage() {
                     {tab === "input" ? "terminal" : "output"}
                   </span>
                   {tab}
-                  {tab === "output" && execResult && !running && (
+                  {tab === "output" && Object.keys(testResults).length > 0 && !running && !submitting && (
                     <span
                       className={`text-[9px] font-bold px-1 py-px rounded ${
-                        execResult.type === "success"
+                        Object.values(testResults).every(r => r.type === "success" || r.type === "executed")
                           ? "bg-emerald-500/15 text-emerald-400"
-                          : execResult.type === "tle"
-                            ? "bg-amber-500/15 text-amber-400"
-                            : "bg-rose-500/15 text-rose-400"
+                          : "bg-rose-500/15 text-rose-400"
                       }`}
                     >
-                      {execResult.type === "success"
+                      {Object.values(testResults).every(r => r.type === "success" || r.type === "executed")
                         ? "✓"
-                        : execResult.type === "compile_error"
-                          ? "CE"
-                          : execResult.type === "tle"
-                            ? "TLE"
-                            : execResult.type === "runtime_error"
-                              ? "RE"
-                              : "!"}
+                        : "!"}
                     </span>
                   )}
                 </button>
@@ -1183,96 +1446,331 @@ export default function EditorPage() {
             </div>
 
             {/* I/O Content */}
-            <div className="flex-1 overflow-hidden">
-              {activeTab === "input" ? (
-                <textarea
-                  placeholder="Custom input (stdin)..."
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  className="w-full h-full bg-[#0a0a0b] text-zinc-300 text-[13px] font-mono p-3 resize-none focus:outline-none placeholder-zinc-700/60"
-                />
-              ) : (
-                <div className="w-full h-full overflow-auto bg-[#0a0a0b]">
-                  {running || submitting ? (
-                    <div className="p-3">
-                      <span className="text-zinc-600 flex items-center gap-1.5 text-[13px] font-mono">
-                        <span className="material-symbols-outlined text-[14px] animate-spin">
-                          progress_activity
-                        </span>
-                        {running
-                          ? "Executing..."
-                          : "Evaluating against test cases..."}
-                      </span>
-                    </div>
-                  ) : execResult ? (
-                    <div className="flex flex-col h-full">
-                      {/* Error / Status Header */}
-                      {execResult.type !== "success" && (
-                        <div
-                          className={`flex items-center gap-2 px-3 py-2 border-b ${
-                            execResult.type === "compile_error"
-                              ? "bg-rose-500/[0.06] border-rose-500/20"
-                              : execResult.type === "runtime_error"
-                                ? "bg-orange-500/[0.06] border-orange-500/20"
-                                : execResult.type === "tle"
-                                  ? "bg-amber-500/[0.06] border-amber-500/20"
-                                  : "bg-rose-500/[0.06] border-rose-500/20"
-                          }`}
-                        >
-                          <span
-                            className={`material-symbols-outlined text-[16px] ${
-                              execResult.type === "compile_error"
-                                ? "text-rose-400"
-                                : execResult.type === "runtime_error"
-                                  ? "text-orange-400"
-                                  : execResult.type === "tle"
-                                    ? "text-amber-400"
-                                    : "text-rose-400"
-                            }`}
-                          >
-                            {execResult.type === "tle" ? "timer_off" : "error"}
-                          </span>
-                          <span
-                            className={`text-[12px] font-semibold ${
-                              execResult.type === "compile_error"
-                                ? "text-rose-400"
-                                : execResult.type === "runtime_error"
-                                  ? "text-orange-400"
-                                  : execResult.type === "tle"
-                                    ? "text-amber-400"
-                                    : "text-rose-400"
-                            }`}
-                          >
-                            {execResult.title}
-                          </span>
-                        </div>
-                      )}
-                      {/* Output Body */}
-                      <pre
-                        className={`flex-1 overflow-auto p-3 text-[13px] font-mono whitespace-pre-wrap break-words ${
-                          execResult.type === "success"
-                            ? "text-emerald-400"
-                            : execResult.type === "compile_error"
-                              ? "text-rose-300/90"
-                              : execResult.type === "runtime_error"
-                                ? "text-orange-300/90"
-                                : execResult.type === "tle"
-                                  ? "text-amber-300/90"
-                                  : "text-rose-300/90"
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-[#0a0a0b]">
+              
+              {/* Test Case Sub-tabs (Only show if not viewing a full submission result) */}
+              {!execResult && (
+                <div className="flex items-center gap-1 px-2 pt-2 overflow-x-auto border-b border-[#1e1e21] shrink-0 custom-scroll">
+                  {testCases.map((tc, idx) => {
+                    const res = testResults[tc.id];
+                    return (
+                      <button
+                        key={tc.id}
+                        onClick={() => setActiveTestCaseId(tc.id)}
+                        className={`px-3 py-1.5 text-[11.5px] font-medium rounded-t-lg transition-colors flex items-center gap-1.5 ${
+                          activeTestCaseId === tc.id
+                            ? "bg-[#1e1e21] text-white"
+                            : "text-zinc-500 hover:text-zinc-300 hover:bg-[#1e1e21]/50"
                         }`}
                       >
-                        {execResult.body}
-                      </pre>
-                    </div>
-                  ) : (
-                    <div className="p-3">
-                      <span className="text-zinc-700/60 text-[13px] font-mono">
-                        Run your code to see output here
-                      </span>
-                    </div>
+                        {activeTab === "output" && res && (
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              res.type === "success" || res.type === "executed" ? "bg-emerald-500" : "bg-rose-500"
+                            }`}
+                          />
+                        )}
+                        Case {idx + 1}
+                      </button>
+                    );
+                  })}
+                  {activeTab === "input" && (
+                    <button
+                      onClick={() => {
+                        const newId = Date.now();
+                        setTestCases([...testCases, { id: newId, input: "" }]);
+                        setActiveTestCaseId(newId);
+                      }}
+                      className="px-2 py-1.5 text-zinc-500 hover:text-white transition-colors mb-0.5"
+                      title="Add Test Case"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">add</span>
+                    </button>
                   )}
                 </div>
               )}
+
+              {/* Tab Content body */}
+              <div className="flex-1 overflow-auto custom-scroll relative">
+                {activeTab === "input" ? (
+                  !execResult ? (
+                    (() => {
+                      const currentTestCase = testCases.find((tc) => tc.id === activeTestCaseId);
+                      if (!currentTestCase) return null;
+
+                      if (problem?.platform === "LeetCode" && problem?.metaData?.params?.length > 0) {
+                        const params = problem.metaData.params;
+                        const lines = currentTestCase.input.split('\n');
+
+                        const updateParam = (idx, value) => {
+                          const newLines = [...lines];
+                          while (newLines.length < params.length) newLines.push("");
+                          newLines[idx] = value.replace(/\n/g, ""); // LeetCode params generally don't have literal newlines in the box
+                          const newInput = newLines.join('\n');
+                          setTestCases(
+                            testCases.map((tc) =>
+                              tc.id === activeTestCaseId ? { ...tc, input: newInput } : tc
+                            )
+                          );
+                        };
+
+                        return (
+                          <div className="w-full h-full p-4 flex flex-col gap-4 overflow-y-auto">
+                            {params.map((param, idx) => (
+                              <div key={idx} className="flex flex-col gap-1.5">
+                                <span className="text-[12px] font-medium text-zinc-400 font-mono">
+                                  {param.name} =
+                                </span>
+                                <div className="bg-[#1a1a1d] border border-[#27272a] rounded-lg focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/20 transition-all">
+                                  <textarea
+                                    value={lines[idx] || ""}
+                                    onChange={(e) => updateParam(idx, e.target.value)}
+                                    placeholder={`${param.type}`}
+                                    className="w-full bg-transparent text-zinc-300 text-[13.5px] font-mono p-2.5 resize-none focus:outline-none min-h-[44px] block overflow-hidden"
+                                    rows={1}
+                                    style={{
+                                      height: lines[idx] ? 'auto' : '44px',
+                                    }}
+                                    onInput={(e) => {
+                                      e.target.style.height = 'auto';
+                                      e.target.style.height = (e.target.scrollHeight) + 'px';
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <textarea
+                          placeholder="Custom input (stdin)..."
+                          value={currentTestCase.input}
+                          onChange={(e) => {
+                            setTestCases(
+                              testCases.map((tc) =>
+                                tc.id === activeTestCaseId
+                                  ? { ...tc, input: e.target.value }
+                                  : tc
+                              )
+                            );
+                          }}
+                          className="w-full h-full bg-transparent text-zinc-300 text-[13px] font-mono p-3 resize-none focus:outline-none placeholder-zinc-700/60"
+                        />
+                      );
+                    })()
+                  ) : (
+                    <div className="p-3">
+                      <span className="text-zinc-700/60 text-[13px] font-mono">
+                        Submission result active. Switch to Output tab to view details, or clear it to edit input.
+                      </span>
+                    </div>
+                  )
+                ) : (
+                  <div className="w-full h-full">
+                    {running || submitting ? (
+                      <div className="p-3">
+                        <span className="text-zinc-600 flex items-center gap-1.5 text-[13px] font-mono">
+                          <span className="material-symbols-outlined text-[14px] animate-spin">
+                            progress_activity
+                          </span>
+                          {running
+                            ? "Executing..."
+                            : "Evaluating against test cases..."}
+                        </span>
+                      </div>
+                    ) : execResult ? (
+                      <div className="flex flex-col h-full">
+                        {/* Error / Status Header for Submission */}
+                        {execResult.type !== "success" && (
+                          <div
+                            className={`flex items-center gap-2 px-3 py-2 border-b shrink-0 ${
+                              execResult.type === "compile_error"
+                                ? "bg-rose-500/[0.06] border-rose-500/20"
+                                : execResult.type === "runtime_error"
+                                  ? "bg-orange-500/[0.06] border-orange-500/20"
+                                  : execResult.type === "tle"
+                                    ? "bg-amber-500/[0.06] border-amber-500/20"
+                                    : "bg-rose-500/[0.06] border-rose-500/20"
+                            }`}
+                          >
+                            <span
+                              className={`material-symbols-outlined text-[16px] ${
+                                execResult.type === "compile_error"
+                                  ? "text-rose-400"
+                                  : execResult.type === "runtime_error"
+                                    ? "text-orange-400"
+                                    : execResult.type === "tle"
+                                      ? "text-amber-400"
+                                      : "text-rose-400"
+                              }`}
+                            >
+                              {execResult.type === "tle" ? "timer_off" : "error"}
+                            </span>
+                            <span
+                              className={`text-[12px] font-semibold ${
+                                execResult.type === "compile_error"
+                                  ? "text-rose-400"
+                                  : execResult.type === "runtime_error"
+                                    ? "text-orange-400"
+                                    : execResult.type === "tle"
+                                      ? "text-amber-400"
+                                      : "text-rose-400"
+                              }`}
+                            >
+                              {execResult.title}
+                            </span>
+                          </div>
+                        )}
+                        {/* Output Body */}
+                        <pre
+                          className={`flex-1 p-3 text-[13px] font-mono whitespace-pre-wrap break-words m-0 ${
+                            execResult.type === "success"
+                              ? "text-emerald-400"
+                              : execResult.type === "compile_error"
+                                ? "text-rose-300/90"
+                                : execResult.type === "runtime_error"
+                                  ? "text-orange-300/90"
+                                  : execResult.type === "tle"
+                                    ? "text-amber-300/90"
+                                    : "text-rose-300/90"
+                          }`}
+                        >
+                          {execResult.body}
+                        </pre>
+                      </div>
+                    ) : testResults[activeTestCaseId] ? (
+                      <div className="flex flex-col h-full">
+                        {/* Error / Status Header for Run Code */}
+                        {testResults[activeTestCaseId].type !== "success" && testResults[activeTestCaseId].type !== "executed" && (
+                          <div
+                            className={`flex items-center gap-2 px-3 py-2 border-b shrink-0 ${
+                              testResults[activeTestCaseId].type === "compile_error" || testResults[activeTestCaseId].type === "wrong_answer"
+                                ? "bg-rose-500/[0.06] border-rose-500/20"
+                                : testResults[activeTestCaseId].type === "runtime_error"
+                                  ? "bg-orange-500/[0.06] border-orange-500/20"
+                                  : testResults[activeTestCaseId].type === "tle"
+                                    ? "bg-amber-500/[0.06] border-amber-500/20"
+                                    : "bg-blue-500/[0.06] border-blue-500/20"
+                            }`}
+                          >
+                            <span
+                              className={`material-symbols-outlined text-[16px] ${
+                                testResults[activeTestCaseId].type === "compile_error" || testResults[activeTestCaseId].type === "wrong_answer"
+                                  ? "text-rose-400"
+                                  : testResults[activeTestCaseId].type === "runtime_error"
+                                    ? "text-orange-400"
+                                    : testResults[activeTestCaseId].type === "tle"
+                                      ? "text-amber-400"
+                                      : "text-blue-400"
+                              }`}
+                            >
+                              {testResults[activeTestCaseId].type === "tle" ? "timer_off" : testResults[activeTestCaseId].type === "wrong_answer" ? "cancel" : "error"}
+                            </span>
+                            <span
+                              className={`text-[12px] font-semibold ${
+                                testResults[activeTestCaseId].type === "compile_error" || testResults[activeTestCaseId].type === "wrong_answer"
+                                  ? "text-rose-400"
+                                  : testResults[activeTestCaseId].type === "runtime_error"
+                                    ? "text-orange-400"
+                                    : testResults[activeTestCaseId].type === "tle"
+                                      ? "text-amber-400"
+                                      : "text-blue-400"
+                              }`}
+                            >
+                              {testResults[activeTestCaseId].title}
+                            </span>
+                          </div>
+                        )}
+                        {/* Output Body */}
+                        <div className="flex-1 p-4 overflow-y-auto custom-scroll flex flex-col gap-5">
+                          {/* Input block */}
+                          {(() => {
+                            const currentTestCase = testCases.find((tc) => tc.id === activeTestCaseId);
+                            const rawInput = currentTestCase?.input || "";
+
+                            if (problem?.platform === "LeetCode" && problem?.metaData?.params?.length > 0) {
+                              const params = problem.metaData.params;
+                              const lines = rawInput.split('\n');
+
+                              return (
+                                <div className="flex flex-col gap-3">
+                                  {params.map((param, idx) => (
+                                    <div key={idx} className="flex flex-col gap-1.5">
+                                      <span className="text-[12px] font-medium text-zinc-400 font-mono">
+                                        {param.name} =
+                                      </span>
+                                      <div className="bg-[#1a1a1d] border border-[#27272a] rounded-lg p-2.5">
+                                        <pre className="text-zinc-300 text-[13px] font-mono whitespace-pre-wrap break-words m-0">
+                                          {lines[idx] || ""}
+                                        </pre>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div className="flex flex-col gap-1.5">
+                                <span className="text-[12px] font-medium text-zinc-400 font-mono">Input</span>
+                                <div className="bg-[#1a1a1d] border border-[#27272a] rounded-lg p-3">
+                                  <pre className="text-zinc-300 text-[13px] font-mono whitespace-pre-wrap break-words m-0">
+                                    {rawInput}
+                                  </pre>
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          {/* Output block */}
+                          <div className="flex flex-col gap-1.5">
+                            <span className="text-[12px] font-medium text-zinc-400 font-mono">Output</span>
+                            <div className="bg-[#1a1a1d] border border-[#27272a] rounded-lg p-3">
+                              <pre
+                                className={`text-[13px] font-mono whitespace-pre-wrap break-words m-0 ${
+                                  testResults[activeTestCaseId].type === "success"
+                                    ? "text-emerald-400"
+                                    : testResults[activeTestCaseId].type === "wrong_answer"
+                                      ? "text-rose-400"
+                                      : testResults[activeTestCaseId].type === "compile_error"
+                                        ? "text-rose-300/90"
+                                        : testResults[activeTestCaseId].type === "runtime_error"
+                                          ? "text-orange-300/90"
+                                          : testResults[activeTestCaseId].type === "tle"
+                                            ? "text-amber-300/90"
+                                            : "text-rose-300/90"
+                                }`}
+                              >
+                                {testResults[activeTestCaseId].body}
+                              </pre>
+                            </div>
+                          </div>
+
+                          {/* Expected Output block (if present) */}
+                          {testResults[activeTestCaseId].expectedOutput && (
+                            <div className="flex flex-col gap-1.5 mt-2">
+                              <span className="text-[12px] font-medium text-zinc-400 font-mono">Expected Output</span>
+                              <div className="bg-[#1a1a1d] border border-[#27272a] rounded-lg p-3">
+                                <pre className="text-zinc-300 text-[13px] font-mono whitespace-pre-wrap break-words m-0">
+                                  {testResults[activeTestCaseId].expectedOutput}
+                                </pre>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-3">
+                        <span className="text-zinc-700/60 text-[13px] font-mono">
+                          Run your code to see output here
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -1285,6 +1783,41 @@ export default function EditorPage() {
         .custom-scroll::-webkit-scrollbar-thumb { background: #27272a; border-radius: 3px; }
         .custom-scroll::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
       `}</style>
+      
+      {/* ─── Focus Mode Confirmation Modal ─── */}
+      {showFocusModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-[#111113] border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl flex flex-col items-center text-center">
+            <div className="w-12 h-12 bg-emerald-500/10 text-emerald-500 rounded-full flex items-center justify-center mb-4 border border-emerald-500/20">
+              <span className="material-symbols-outlined text-[24px]">center_focus_strong</span>
+            </div>
+            <h2 className="text-[18px] font-bold text-white mb-2">Enter Focus Mode</h2>
+            <p className="text-[13px] text-zinc-400 mb-6 leading-relaxed">
+              Focus mode hides distractions and locks hints behind a timer (18 min per hint). Solve the problem without opening hints to earn a <strong className="text-emerald-400">+5 Point Focus Bonus</strong>!
+            </p>
+            <div className="flex items-center gap-3 w-full">
+              <button 
+                onClick={() => setShowFocusModal(false)}
+                className="flex-1 py-2 rounded-xl text-[12px] font-medium text-zinc-400 hover:text-white hover:bg-white/5 transition-colors border border-transparent hover:border-white/10"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => {
+                  setFocusModeEnabled(true);
+                  setHasOpenedHint(false);
+                  setFocusTimeElapsed(0);
+                  setShowFocusModal(false);
+                  setTimerOn(true);
+                }}
+                className="flex-1 py-2 rounded-xl text-[12px] font-bold text-white bg-emerald-500 hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-500/20"
+              >
+                Start Focusing
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -22,10 +22,10 @@ export default function ProblemTable({
           </span>
         </div>
         <h3 className="text-[15px] font-medium text-text-primary mb-1">
-          No vectors found
+          No problems found
         </h3>
         <p className="text-text-secondary text-[13px]">
-          Adjust your search parameters to locate problem vectors.
+          Adjust your search parameters or filters to see more results.
         </p>
       </div>
     );
@@ -45,26 +45,23 @@ export default function ProblemTable({
       </div>
 
       {/* Table */}
-      <div className="hidden md:block w-full border border-border rounded-2xl overflow-hidden bg-white/[0.01]">
+      <div className="hidden md:block w-full overflow-hidden">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="border-b border-border bg-white/[0.02]">
-              <th className="py-3.5 px-3 text-[10px] font-semibold text-text-tertiary uppercase tracking-[0.1em] w-8"></th>
-              <th className="py-3.5 px-3 text-[10px] font-semibold text-text-tertiary uppercase tracking-[0.1em] w-10"></th>
-              <th className="py-3.5 px-5 text-[10px] font-semibold text-text-tertiary uppercase tracking-[0.1em] w-[300px]">
-                Problem Vector
+            <tr className="border-y border-border/50 text-text-tertiary">
+              <th className="py-3 px-3 text-[10px] font-semibold uppercase tracking-[0.08em] w-8"></th>
+              <th className="py-3 px-3 text-[10px] font-semibold uppercase tracking-[0.08em] w-10"></th>
+              <th className="py-3 px-5 text-[10px] font-semibold uppercase tracking-[0.08em] w-[300px]">
+                Problem
               </th>
-              <th className="py-3.5 px-5 text-[10px] font-semibold text-text-tertiary uppercase tracking-[0.1em] w-[130px]">
-                Source Node
+              <th className="py-3 px-5 text-[10px] font-semibold uppercase tracking-[0.08em] w-[130px]">
+                Platform
               </th>
-              <th className="py-3.5 px-5 text-[10px] font-semibold text-text-tertiary uppercase tracking-[0.1em] w-[130px]">
-                Complexity
+              <th className="py-3 px-5 text-[10px] font-semibold uppercase tracking-[0.08em] w-[130px]">
+                Difficulty
               </th>
-              <th className="py-3.5 px-5 text-[10px] font-semibold text-text-tertiary uppercase tracking-[0.1em]">
-                Architecture
-              </th>
-              <th className="py-3.5 px-5 text-[10px] font-semibold text-text-tertiary uppercase tracking-[0.1em] w-[100px] text-right">
-                Execution
+              <th className="py-3 px-5 text-[10px] font-semibold uppercase tracking-[0.08em] w-[100px] text-right">
+                Action
               </th>
             </tr>
           </thead>
@@ -75,8 +72,6 @@ export default function ProblemTable({
                 className="group border-b border-border/50 last:border-b-0 hover:bg-accent/[0.02] transition-all duration-200 cursor-pointer relative"
                 onClick={() => navigate(`/editor/${problem._id}`)}
               >
-                {/* Hover gradient sweep */}
-                <td className="absolute inset-0 bg-gradient-to-r from-accent/[0.02] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
 
                 {/* Solved Status */}
                 <td className="py-3.5 px-3 text-center relative">
@@ -140,9 +135,6 @@ export default function ProblemTable({
                   <DifficultyBadge difficulty={problem.difficulty} />
                 </td>
 
-                <td className="py-3.5 px-5 relative">
-                  <TagBadge tags={problem.tags} />
-                </td>
 
                 <td
                   className="py-3.5 px-5 text-right relative"
@@ -205,7 +197,7 @@ export default function ProblemTable({
             <h3 className="text-[15px] font-medium text-text-primary">
               {problem.title}
             </h3>
-            <TagBadge tags={problem.tags} />
+
           </div>
         ))}
       </div>

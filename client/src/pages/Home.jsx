@@ -1,7 +1,9 @@
 import { useMemo, useState, useEffect, useCallback } from "react";
-import { useUser, useClerk, useAuth } from "@clerk/clerk-react";
+import { useUser, useAuth } from "@clerk/clerk-react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "../services/api";
+import BootLoader from "../components/BootLoader";
+import Sidebar from "../components/Sidebar";
 
 /* ─────────────────────────────────────────────────────── Heatmap ── */
 const Heatmap = ({ heatmapData = {} }) => {
@@ -68,6 +70,8 @@ const Heatmap = ({ heatmapData = {} }) => {
               {week.map((cell, ci) => (
                 <div
                   key={ci}
+                  role="img"
+                  aria-label={`${cell.dateKey}: ${cell.count} submission${cell.count !== 1 ? "s" : ""}`}
                   className={`w-[12px] h-[12px] rounded-[3px] ${levels[cell.level]} hover:ring-1 hover:ring-accent/40 transition-all duration-150 cursor-crosshair`}
                   title={`${cell.dateKey} — ${cell.count} submission${cell.count !== 1 ? "s" : ""}`}
                 />
@@ -220,33 +224,45 @@ const formatContestTime = (startTimeISO) => {
   });
 };
 
+/* ── Global Cache for Fast Navigation ── */
+let cachedStats = null;
+let cachedContests = null;
+let cachedPrepCounts = null;
+
 /* ═══════════════════════════════════════════════════ Main Component ══ */
 const Home = () => {
-  const { user } = useUser();
-  const { signOut } = useClerk();
+  const { isLoaded, user } = useUser();
   const { getToken } = useAuth();
   const navigate = useNavigate();
   const userName    = user?.firstName || user?.username || "Guest";
   const userAvatar  = user?.imageUrl;
 
   /* ── Stats state ── */
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState(() => cachedStats || {
     solvedCount: 0, streak: 0, heatmapData: {},
     platformRatings: [], targetRating: 1500,
     activeDays: 0, avgPerDay: 0, contestsParticipated: 0,
     platformHandles: { codeforces: "", leetcode: "", codechef: "" },
   });
-  const [statsLoading, setStatsLoading] = useState(true);
+  const [statsLoading, setStatsLoading] = useState(!cachedStats);
 
   /* ── Contest state ── */
-  const [contests, setContests] = useState([]);
-  const [contestsLoading, setContestsLoading] = useState(true);
+  const [contests, setContests] = useState(() => cachedContests || []);
+  const [contestsLoading, setContestsLoading] = useState(!cachedContests);
 
   /* ── Prep card counts ── */
-  const [prepCounts, setPrepCounts] = useState({ LeetCode: 0, Codeforces: 0, CodeChef: 0 });
+  const [prepCounts, setPrepCounts] = useState(() => cachedPrepCounts || { LeetCode: 0, Codeforces: 0, CodeChef: 0 });
 
   /* ── Sync button ── */
   const [syncing, setSyncing] = useState(false);
+
+  /* ── Toast notification (replaces alert()) ── */
+  const [toast, setToast] = useState(null);
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(id);
+  }, [toast]);
 
   /* ── Fetch stats ── */
   const fetchStats = useCallback(async () => {
@@ -256,6 +272,7 @@ const Home = () => {
       const res = await api.get("/api/users/stats", {
         headers: { Authorization: `Bearer ${token}` },
       });
+      cachedStats = res.data;
       setStats(res.data);
 
       // Removed modal trigger
@@ -275,6 +292,7 @@ const Home = () => {
       const filtered = fetched.filter(c => 
         c.platformKey !== "CC" || c.title.toLowerCase().includes("starter")
       );
+      cachedContests = filtered;
       setContests(filtered);
     } catch (err) {
       console.log("Contests not loaded:", err);
@@ -291,11 +309,13 @@ const Home = () => {
         api.get("/api/problems?platform=Codeforces&limit=1"),
         api.get("/api/problems?platform=CodeChef&limit=1"),
       ]);
-      setPrepCounts({
-        LeetCode:   lcRes.data.total || 0,
-        Codeforces: cfRes.data.total || 0,
-        CodeChef:   ccRes.data.total || 0,
-      });
+      const data = {
+        LeetCode: Number(lcRes.data.total) || 0,
+        Codeforces: Number(cfRes.data.total) || 0,
+        CodeChef: Number(ccRes.data.total) || 0,
+      };
+      cachedPrepCounts = data;
+      setPrepCounts(data);
     } catch (err) {
       console.log("Prep counts not loaded:", err);
     }
@@ -326,7 +346,7 @@ const Home = () => {
       await fetchStats();
     } catch (err) {
       console.error("Sync failed:", err);
-      alert(err.code === "ECONNABORTED" ? "Sync timed out" : "Sync failed");
+      setToast({ type: "error", message: err.code === "ECONNABORTED" ? "Sync timed out — please try again" : "Sync failed — check your connection" });
     } finally {
       setSyncing(false);
     }
@@ -377,89 +397,29 @@ const Home = () => {
     { title: "CodeChef Starters", desc: "Starters-level problems. Speed up implementation and number theory.",          platform: "CodeChef",   color: "#fb923c", problems: prepCounts.CodeChef },
   ];
 
-  /* ── Nav items ── */
-  const navItems = [
-    { to: "/problems", icon: "code",         label: "Problems",  active: false },
-    { to: "#",         icon: "emoji_events", label: "Contests",  active: false, comingSoon: true },
-    { to: "#",         icon: "target",       label: "Practice",  active: false, comingSoon: true },
-    { to: "#",         icon: "bar_chart",    label: "Analytics", active: false, comingSoon: true },
-  ];
+  /* ── Difficulty percentages (real data) ── */
+  const difficultyPcts = useMemo(() => {
+    const ext = stats.externalStats || {};
+    const easy = (ext.leetcode?.easySolved || 0) + (ext.codeforces?.easySolved || 0) + (ext.codechef?.easySolved || 0);
+    const med  = (ext.leetcode?.mediumSolved || 0) + (ext.codeforces?.mediumSolved || 0) + (ext.codechef?.mediumSolved || 0);
+    const hard = (ext.leetcode?.hardSolved || 0) + (ext.codeforces?.hardSolved || 0) + (ext.codechef?.hardSolved || 0);
+    const total = easy + med + hard;
+    if (total === 0) return { easy: 33, med: 34, hard: 33 };
+    return {
+      easy: Math.round((easy / total) * 100),
+      med:  Math.round((med / total) * 100),
+      hard: Math.max(100 - Math.round((easy / total) * 100) - Math.round((med / total) * 100), 0),
+    };
+  }, [stats.externalStats]);
+
+  if (!isLoaded || statsLoading) {
+    return <BootLoader />;
+  }
 
   return (
     <div className="bg-bg-deep text-text-primary min-h-screen flex overflow-hidden selection:bg-accent/20">
 
-      {/* ─── Sidebar ─── */}
-      <aside className="w-[260px] border-r border-border hidden md:flex flex-col bg-bg-deep shrink-0 relative">
-        {/* Subtle ambient glow in sidebar */}
-        <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-accent/[0.03] to-transparent pointer-events-none" />
-
-        <div className="h-14 flex items-center px-5 gap-3 border-b border-border relative z-10">
-          <div className="size-7 rounded-[8px] bg-gradient-to-br from-accent to-amber-600 flex items-center justify-center shadow-sm" style={{ boxShadow: '0 0 12px rgba(226,179,64,0.15)' }}>
-            <span className="material-symbols-outlined text-black text-[16px]">code</span>
-          </div>
-          <div className="flex flex-col leading-none">
-            <span className="font-semibold text-[15px] tracking-tight text-text-primary">DSAstra</span>
-          </div>
-        </div>
-
-        <nav className="flex-1 overflow-y-auto py-4 px-3 flex flex-col gap-0.5 relative z-10">
-          <Link to="/"
-            className="nav-active flex items-center gap-2.5 px-3 py-[7px] rounded-lg bg-accent/[0.08] text-accent font-medium text-[13px] border border-accent/10 transition-all duration-200">
-            <span className="material-symbols-outlined text-[18px]">dashboard</span>
-            Dashboard
-          </Link>
-          {navItems.map((item) => (
-            <div key={item.label} className="relative group/nav">
-              <Link
-                to={item.to}
-                onClick={item.comingSoon ? (e) => e.preventDefault() : undefined}
-                className={`flex items-center gap-2.5 px-3 py-[7px] rounded-lg text-text-secondary hover:text-text-primary hover:bg-white/[0.03] transition-all duration-200 text-[13px] font-medium ${item.comingSoon ? "cursor-not-allowed opacity-50" : ""}`}
-              >
-                <span className="material-symbols-outlined text-[18px]">{item.icon}</span>
-                {item.label}
-                {item.comingSoon && (
-                  <span className="ml-auto text-[9px] bg-accent-secondary/10 text-accent-secondary border border-accent-secondary/15 px-1.5 py-[2px] rounded-md font-semibold uppercase tracking-wider">
-                    Soon
-                  </span>
-                )}
-              </Link>
-            </div>
-          ))}
-        </nav>
-
-        <div className="px-3 pb-2 relative z-10" />
-
-        {user ? (
-          <div className="px-3 py-3 border-t border-border relative z-10 flex items-center justify-between group">
-            <Link to="/settings" className="flex items-center gap-2.5 flex-1 px-2 py-1.5 rounded-lg hover:bg-white/[0.03] transition-all duration-200">
-              <div className="size-7 rounded-full bg-bg-hover overflow-hidden border border-border shrink-0">
-                {userAvatar && <img alt="" className="w-full h-full object-cover" src={userAvatar} />}
-              </div>
-              <div className="flex flex-col flex-1 overflow-hidden leading-none">
-                <span className="text-[13px] font-medium text-text-primary truncate">{userName}</span>
-                <span className="text-[11px] text-text-tertiary truncate mt-0.5">
-                  {handles.codeforces || handles.leetcode || handles.codechef
-                    ? "Handles connected"
-                    : "Connect platforms"}
-                </span>
-              </div>
-            </Link>
-            <button onClick={() => signOut()} className="material-symbols-outlined text-text-tertiary hover:text-rose text-[18px] opacity-0 group-hover:opacity-100 transition-all duration-200 p-1 rounded-md hover:bg-white/5 mr-1" title="Sign Out">
-              logout
-            </button>
-          </div>
-        ) : (
-          <div className="px-4 py-4 border-t border-border relative z-10 flex flex-col gap-2">
-            <p className="text-[11px] text-text-tertiary text-center mb-1">Sign in to sync your progress</p>
-            <Link to="/login" className="flex justify-center items-center py-2 bg-gradient-to-r from-accent to-amber-500 hover:from-accent-hover hover:to-amber-400 text-black text-[13px] font-semibold rounded-lg shadow-[0_0_15px_rgba(226,179,64,0.15)] transition-all">
-              Sign In
-            </Link>
-            <Link to="/register" className="flex justify-center items-center py-2 bg-white/[0.03] hover:bg-white/[0.08] text-text-secondary text-[13px] font-medium rounded-lg border border-border transition-all">
-              Create Account
-            </Link>
-          </div>
-        )}
-      </aside>
+      <Sidebar activePage="dashboard" handles={stats.platformHandles} />
 
       {/* ─── Main ─── */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
@@ -551,7 +511,7 @@ const Home = () => {
                             <span className="text-[10px] text-text-tertiary font-mono">@{p.handle}</span>
                           ) : (
                             <button
-                              onClick={() => setShowHandlesModal(true)}
+                              onClick={() => navigate('/settings')}
                               className="text-[10px] text-accent-secondary hover:text-violet transition-colors duration-200"
                             >
                               + Add handle
@@ -595,20 +555,23 @@ const Home = () => {
             </section>
 
             {/* ── Stats ── */}
-            <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <section className="grid grid-cols-2 lg:grid-cols-5 gap-3">
               {/* Solved */}
-              <div className="glass-card rounded-2xl p-4 relative overflow-hidden animate-fade-in-up stagger-1">
+              <div className="glass-card rounded-2xl p-4 lg:col-span-2 relative overflow-hidden animate-fade-in-up stagger-1 active:scale-[0.99] transition-transform">
                 <div className="absolute -bottom-4 -right-4 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity">
                   <span className="material-symbols-outlined text-[72px]">check_circle</span>
                 </div>
                 <span className="text-[11px] text-text-tertiary uppercase tracking-wider font-medium block mb-3">Total Solved</span>
                 <span className="text-[28px] font-bold text-text-primary tracking-tight leading-none block" style={{ fontVariantNumeric: "tabular-nums" }}>
-                  {(stats.solvedCount || 0) + (stats.externalStats?.leetcode?.totalSolved || 0)}
+                  {(stats.solvedCount || 0) + 
+                   (stats.externalStats?.leetcode?.totalSolved || 0) + 
+                   (stats.externalStats?.codeforces?.totalSolved || 0) + 
+                   (stats.externalStats?.codechef?.totalSolved || 0)}
                 </span>
                 <div className="flex gap-0.5 mt-3 w-full h-1.5 rounded-full overflow-hidden bg-white/[0.03]">
-                  <div className="bg-emerald rounded-l-full transition-all duration-700" style={{ width: "40%" }} />
-                  <div className="bg-amber transition-all duration-700" style={{ width: "40%" }} />
-                  <div className="bg-rose rounded-r-full transition-all duration-700" style={{ width: "20%" }} />
+                  <div className="bg-emerald rounded-l-full transition-all duration-700" style={{ width: `${difficultyPcts.easy}%` }} />
+                  <div className="bg-amber transition-all duration-700" style={{ width: `${difficultyPcts.med}%` }} />
+                  <div className="bg-rose rounded-r-full transition-all duration-700" style={{ width: `${difficultyPcts.hard}%` }} />
                 </div>
                 <div className="flex justify-between mt-2 text-[10px] font-medium">
                   <span className="text-emerald">Easy</span>
@@ -618,7 +581,7 @@ const Home = () => {
               </div>
 
               {/* Streak */}
-              <div className="glass-card rounded-2xl p-4 relative overflow-hidden animate-fade-in-up stagger-2">
+              <div className="glass-card rounded-2xl p-4 md:col-span-2 lg:col-span-3 relative overflow-hidden animate-fade-in-up stagger-2 active:scale-[0.98] transition-transform">
                 <div className="absolute -bottom-4 -right-4 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity">
                   <span className="material-symbols-outlined text-[72px] text-orange">local_fire_department</span>
                 </div>
@@ -633,7 +596,9 @@ const Home = () => {
                 <div className="flex gap-1 mt-3">
                   {streakWeekBars.map((d, i) => (
                     <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                      <div className={`w-full h-2 rounded-sm transition-all duration-300 ${d.active ? "bg-gradient-to-t from-orange to-amber" : d.isToday ? "bg-orange/20" : "bg-white/[0.04]"}`} />
+                      <div className={`w-full h-2 rounded-sm transition-all duration-300 relative flex items-center justify-center ${d.active ? "bg-gradient-to-t from-orange to-amber" : d.isToday ? "bg-orange/20" : "bg-white/[0.04]"}`}>
+                        {d.active && <span className="text-[5px] text-black/60 font-bold leading-none">✓</span>}
+                      </div>
                       <span className="text-[8px] text-text-muted font-medium">{d.day}</span>
                     </div>
                   ))}
@@ -641,7 +606,7 @@ const Home = () => {
               </div>
 
               {/* Best Rating */}
-              <div className="glass-card rounded-2xl p-4 relative overflow-hidden animate-fade-in-up stagger-3">
+              <div className="glass-card rounded-2xl p-4 lg:col-span-3 relative overflow-hidden animate-fade-in-up stagger-3 active:scale-[0.99] transition-transform">
                 <div className="absolute -bottom-4 -right-4 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity">
                   <span className="material-symbols-outlined text-[72px] text-accent-secondary">emoji_events</span>
                 </div>
@@ -660,7 +625,7 @@ const Home = () => {
               </div>
 
               {/* Submissions */}
-              <div className="glass-card rounded-2xl p-4 relative overflow-hidden animate-fade-in-up stagger-4">
+              <div className="glass-card rounded-2xl p-4 md:col-span-2 lg:col-span-2 relative overflow-hidden animate-fade-in-up stagger-4 active:scale-[0.99] transition-transform">
                 <div className="absolute -bottom-4 -right-4 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity">
                   <span className="material-symbols-outlined text-[72px]">trophy</span>
                 </div>
@@ -707,6 +672,24 @@ const Home = () => {
               </div>
               {statsLoading ? (
                 <div className="h-32 w-full mt-4 rounded-xl bg-white/[0.02] border border-border animate-shimmer" />
+              ) : stats.solvedCount === 0 ? (
+                <div className="mt-4 p-6 rounded-xl border border-dashed border-border flex flex-col items-center justify-center text-center bg-white/[0.01]">
+                  <div className="size-12 rounded-full bg-accent/10 flex items-center justify-center mb-3">
+                    <span className="material-symbols-outlined text-[24px] text-accent">rocket_launch</span>
+                  </div>
+                  <h3 className="text-[14px] font-medium text-text-primary mb-1">Welcome to DSAstra!</h3>
+                  <p className="text-[12px] text-text-secondary max-w-[280px] mb-4">
+                    Your journey starts here. Link your competitive programming accounts or solve a problem to see your activity.
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <Link to="/settings" className="px-4 py-1.5 rounded-lg border border-border text-[12px] font-medium text-text-secondary hover:text-text-primary hover:bg-white/[0.03] active:scale-[0.98] transition-all">
+                      Link Accounts
+                    </Link>
+                    <Link to="/problems" className="px-4 py-1.5 rounded-lg bg-accent text-white text-[12px] font-medium hover:bg-accent-hover active:scale-[0.98] transition-all">
+                      Start Solving
+                    </Link>
+                  </div>
+                </div>
               ) : (
                 <Heatmap heatmapData={stats.heatmapData} />
               )}
@@ -805,7 +788,7 @@ const Home = () => {
                 ))}
 
                 {/* AI Teaser */}
-                <div className="rounded-2xl border border-dashed border-accent-secondary/15 p-4 flex items-start gap-3 bg-accent-secondary/[0.02]">
+                <div className="rounded-2xl border border-dashed border-accent-secondary/15 p-4 flex items-start gap-3 bg-accent-secondary/[0.02] active:scale-[0.99] transition-transform cursor-default">
                   <div className="size-8 rounded-xl bg-accent-secondary/10 border border-accent-secondary/15 flex items-center justify-center shrink-0 mt-0.5">
                     <span className="material-symbols-outlined text-[16px] text-accent-secondary">auto_awesome</span>
                   </div>
@@ -822,6 +805,25 @@ const Home = () => {
           </div>
         </div>
       </main>
+
+      {/* ── Toast Notification ── */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 animate-fade-in-up">
+          <div className={`px-4 py-3 rounded-xl shadow-lg border flex items-center gap-3 backdrop-blur-md ${
+            toast.type === "error" 
+              ? "bg-rose-500/10 border-rose-500/20 text-rose-500" 
+              : "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
+          }`}>
+            <span className="material-symbols-outlined text-[18px]">
+              {toast.type === "error" ? "error" : "check_circle"}
+            </span>
+            <span className="text-[13px] font-medium">{toast.message}</span>
+            <button onClick={() => setToast(null)} className="p-1 opacity-60 hover:opacity-100 ml-2">
+              <span className="material-symbols-outlined text-[16px]">close</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
